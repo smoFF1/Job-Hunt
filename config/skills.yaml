@@ -1,0 +1,96 @@
+# Skills vocabulary: canonical name + aliases. Used for BOTH CV text and job text.
+# Matching is case-insensitive unless `case_sensitive: true`; longest alias wins
+# ("React Native" does not also count as "React"). Spaces/hyphens in aliases are interchangeable.
+skills:
+  # Languages
+  - name: Python
+    aliases: [python3, פייתון]
+  - name: Java
+    aliases: [ג'אווה]
+  - name: C++
+    aliases: [cpp, c plus plus]
+  - name: C#
+    aliases: [csharp, c sharp]
+  - name: C
+    case_sensitive: true
+  - name: JavaScript
+    aliases: [js, javascript, ecmascript, es6]
+  - name: TypeScript
+  - name: Go
+    aliases: [golang]
+    case_sensitive: true
+  - name: Rust
+  - name: Kotlin
+  - name: Swift
+  - name: Bash
+    aliases: [shell scripting]
+  - name: SQL
+  # Frontend / mobile
+  - name: React
+    aliases: [react.js, reactjs]
+  - name: React Native
+  - name: Angular
+    aliases: [angularjs]
+  - name: Vue
+    aliases: [vue.js, vuejs]
+  - name: HTML
+    aliases: [html5]
+  - name: CSS
+    aliases: [css3]
+  # Backend frameworks
+  - name: Node.js
+    aliases: [node, nodejs, node js]
+  - name: FastAPI
+  - name: Django
+  - name: Flask
+  - name: Spring
+    aliases: [spring boot]
+  - name: .NET
+    aliases: [dotnet, asp.net, .net core]
+  - name: REST
+    aliases: [REST API, REST APIs, RESTful, RESTful API, RESTful APIs]
+    case_sensitive: true      # avoid "the rest of the team"
+  - name: GraphQL
+  - name: Microservices
+    aliases: [microservice]
+  # Data
+  - name: PostgreSQL
+    aliases: [postgres]
+  - name: MySQL
+  - name: MongoDB
+    aliases: [mongo]
+  - name: Redis
+  - name: Kafka
+  - name: Pandas
+  - name: NumPy
+  # AI / ML
+  - name: LLM/GenAI
+    aliases: [llm, llms, genai, gen ai, generative ai, large language models, gpt, openai, rag]
+  - name: Machine Learning
+    aliases: [ml, deep learning]
+  - name: PyTorch
+  - name: TensorFlow
+  # DevOps / infra
+  - name: Docker
+  - name: Kubernetes
+    aliases: [k8s]
+  - name: AWS
+  - name: Azure
+  - name: GCP
+    aliases: [google cloud]
+  - name: Linux
+    aliases: [unix, לינוקס]
+  - name: Git
+    aliases: [github, gitlab]
+  - name: CI/CD
+    aliases: [ci cd]
+  - name: Jenkins
+  - name: Terraform
+  # Testing
+  - name: Selenium
+  - name: Playwright
+  - name: Cypress
+  - name: Pytest
+  # Embedded
+  - name: RTOS
+  - name: Embedded C

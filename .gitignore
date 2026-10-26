@@ -1,0 +1,12 @@
+.env
+*.db
+assets/cv/
+config/profile.yaml
+config/cvs.yaml
+browser_profile/
+__pycache__/
+.venv/
+data/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

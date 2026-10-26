@@ -1,0 +1,21 @@
+# Example profile with FAKE placeholder values. Safe to commit.
+# Copy to config/profile.yaml (gitignored) and fill in real values.
+first_name: Jane
+last_name: Doe
+email: jane.doe@example.com
+phone_intl: "+972500000000"
+phone_local: "0500000000"
+location: Tel Aviv, Israel
+linkedin: https://linkedin.com/in/example
+github: https://github.com/example
+education:
+  degree: B.Sc. Computer Science
+  institution: Example University
+  graduated: "01/2025"
+  gpa: 85
+  status: graduate        # graduate | student
+level: entry-level
+core_skills:
+  - Python
+  - JavaScript
+  - Git

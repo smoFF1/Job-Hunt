@@ -1,0 +1,170 @@
+# Search, filtering and scoring configuration (see docs/SPEC.md "Filtering spec").
+# All matching is case-insensitive and whole-word. Hebrew keywords also match with up to
+# two one-letter prefixes from `hebrew_prefixes` (e.g. "והמנהל" matches "מנהל").
+
+thresholds:
+  experience_cutoff: 2        # skip if years_required_min >= this
+  shortlist_threshold: 50     # Shortlisted if score >= this
+
+llm_tiebreaker: false         # optional LLM tiebreaker (not implemented in Phase 1)
+
+hebrew_prefixes: "ובהלש"
+
+filters:
+  senior_title_keywords:
+    - senior
+    - sr
+    - lead
+    - principal
+    - staff
+    - architect
+    - manager
+    - director
+    - head of
+    - vp
+    - בכיר
+    - בכירה
+    - ראש צוות
+    - ראש קבוצה
+    - ראש קבוצת         # construct form ("ראש קבוצת פיתוח")
+    - ארכיטקט
+    - ארכיטקטית
+    - מנהל
+    - מנהלת
+  # Student-only skip is applied to the TITLE only; student in description gets a score penalty.
+  student_keywords: [student, students, סטודנט, סטודנטית, סטודנטים, סטודנטיות]
+  # ...unless one of these appears anywhere (title or description).
+  graduate_keywords: [graduate, graduates, בוגר, בוגרת, בוגרי, בוגרים, בוגרות]
+  # Sentences/lines containing these are ignored for years-of-experience extraction (decision Q1).
+  advantage_markers:
+    - advantage
+    - advantages
+    - preferred
+    - nice to have
+    - a plus
+    - is a plus
+    - bonus
+    - יתרון
+    - יתרונות
+    - יתרון משמעותי
+
+boost_keywords:
+  - junior
+  - jr
+  - graduate
+  - graduates
+  - entry level
+  - new grad
+  - 0-2 years
+  - בוגר
+  - בוגרת
+  - בוגרי
+  - בוגרים
+  - ג'וניור
+  - ג'וניורית
+  - ללא ניסיון
+
+# Generic software titles (role score tier 2) — e.g. "Junior Software Engineer".
+generic_title_keywords:
+  - software engineer
+  - software developer
+  - software
+  - developer
+  - programmer
+  - מפתח
+  - מפתחת
+  - מתכנת
+  - מתכנתת
+  - מהנדס תוכנה
+  - מהנדסת תוכנה
+  - פיתוח תוכנה
+
+# Ordered: first match wins. Title is checked first, then the description. Fallback: General.
+# `tag` is matched against cvs.yaml tags to suggest a CV.
+categories:
+  - name: QA Automation
+    tag: qa
+    keywords: [qa, sdet, test automation, automation engineer, automation developer, quality assurance,
+               tester, בודק, בודקת, אוטומציה, בדיקות]
+  - name: AI
+    tag: ai
+    keywords: [ai, artificial intelligence, machine learning, ml, llm, genai, gen ai, deep learning, nlp,
+               computer vision, data scientist, בינה מלאכותית, למידת מכונה]
+  - name: Fullstack
+    tag: fullstack
+    keywords: [full stack, fullstack, פולסטאק, פול סטאק, פולסטק]
+  - name: Backend
+    tag: backend
+    keywords: [backend, back end, server side, בקאנד, בק אנד, צד שרת]
+  - name: Frontend
+    tag: frontend
+    keywords: [frontend, front end, ui developer, פרונטאנד, פרונטנד, פרונט אנד, צד לקוח]
+  - name: DevOps
+    tag: devops
+    keywords: [devops, sre, site reliability, platform engineer, cloud engineer, דבאופס, דב אופס]
+  - name: Embedded/RT
+    tag: embedded
+    keywords: [embedded, real time, rt, firmware, low level, rtos, אמבדד, משובץ, משובצות, זמן אמת, קושחה]
+  - name: Defense/Security
+    tag: defense
+    keywords: [defense, defence, security, cyber, סייבר, ביטחון, ביטחוני, ביטחונית, אבטחת מידע]
+
+# Domain bonus: defense / security / embedded (title, description or company).
+domain_keywords:
+  - defense
+  - defence
+  - security
+  - cyber
+  - military
+  - embedded
+  - rtos
+  - firmware
+  - real time
+  - סייבר
+  - ביטחון
+  - ביטחוני
+  - ביטחונית
+  - ביטחוניות
+  - אמבדד
+  - משובץ
+  - משובצות
+  - זמן אמת
+
+scoring:
+  role:
+    title_category: 30        # category keyword in the title
+    generic_title: 20         # generic software title
+    description_category: 15  # category keyword only in the description
+  skills:
+    max: 30                   # 30 * |job skills ∩ candidate skills| / |job skills|
+    no_skills_listed: 10      # job text mentions no vocabulary skills
+  seniority:
+    boost: 20                 # boost keyword, or years_required_min <= boost_max_years
+    neutral: 10
+    boost_max_years: 1
+  domain:
+    bonus: 10
+  recency:                    # [max_days_old, points], first matching bucket wins
+    buckets: [[3, 10], [7, 7], [14, 4]]
+    older: 0
+    unknown: 5
+  penalties:
+    student_in_description: -20  # description mentions student/סטודנט without graduate/בוגר
+
+# Target roles (search queries for scrapers, Phase 2+).
+roles:
+  - QA Automation
+  - AI Developer
+  - AI Engineer
+  - Fullstack Developer
+  - Backend Developer
+  - Frontend Developer
+  - DevOps Engineer
+  - Embedded Software Engineer
+  - Real-Time Software Engineer
+  - Software Engineer (Defense/Security)
+
+# Per-site config (Phase 2+). Each site needs `enabled`. LinkedIn is disabled by default.
+sites:
+  linkedin:
+    enabled: false

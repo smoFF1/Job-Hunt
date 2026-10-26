@@ -1,0 +1,10 @@
+# Example CV registry with a PLACEHOLDER filename. Safe to commit.
+# Copy to config/cvs.yaml (gitignored) and point `file` at your real PDF in assets/cv/.
+# Adding a CV version = drop a PDF in assets/cv/ + one entry here. No code changes.
+# tags are matched against the job category's tag (see search.yaml) to suggest a CV.
+cvs:
+  - id: main
+    file: assets/cv/my_cv.pdf
+    label: General
+    tags: [general, fullstack, backend, ai]
+    default: true
