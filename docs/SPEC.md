@@ -53,3 +53,10 @@ Statuses: New, Skipped, Shortlisted, Needs Input, Ready for Review, Applied, Rej
 3. Dashboard: table, filters, status/CV dropdowns, notes, CSV export, Hebrew/RTL.
 4. Applicator: on-demand pre-fill in a visible browser, stop before submit.
 5. Daily run: run_daily.py with lock file, catch-up, summary; scheduling via OS scheduler or /schedule running the script.
+
+## Status after Phase 1 (committed)
+- config/ is at the repo root (not inside job_hunter/); code lives in job_hunter/.
+- config/profile.yaml and config/cvs.yaml are gitignored; *.example.yaml are committed.
+- Student rule: in the title → skip; in the description without graduate/בוגר → score penalty (-20, configurable).
+- CLI: python -m job_hunter init-db | load-cvs | seed | process | rescore | list | explain | stats. Env JOB_HUNTER_DB selects the DB file.
+- Tests: pytest (263 passing), ruff clean.
