@@ -43,6 +43,51 @@ def test_fingerprint_differs_by_location():
     assert fingerprint("A", "Dev", "Haifa") != fingerprint("A", "Dev", "Tel Aviv")
 
 
+@pytest.mark.parametrize("confidential_name", ["", None, "חברה חסויה", "  חברה   חסויה  ", "Confidential"])
+def test_fingerprint_confidential_company_includes_source_job_id(confidential_name):
+    fp_a = fingerprint(confidential_name, "Junior Software Developer", "Tel Aviv", "8650814")
+    fp_b = fingerprint(confidential_name, "Junior Software Developer", "Tel Aviv", "8899999")
+    fp_a_repeat = fingerprint(confidential_name, "Junior Software Developer", "Tel Aviv", "8650814")
+    assert fp_a != fp_b
+    assert fp_a == fp_a_repeat
+
+
+def test_fingerprint_named_company_ignores_source_job_id():
+    assert fingerprint("TechNova Ltd", "Junior Dev", "Tel Aviv", "100") == \
+        fingerprint("TechNova, Ltd.", "Junior Dev", "Tel Aviv", "200")
+
+
+def test_ingest_does_not_collapse_distinct_confidential_jobs(session):
+    j1, c1 = ingest(
+        session,
+        _posting(source="alljobs", source_job_id="1001", company="חברה חסויה",
+                 title="Junior Python Developer", location="תל אביב", url="https://alljobs.test/1001"),
+        NOW,
+    )
+    j2, c2 = ingest(
+        session,
+        _posting(source="alljobs", source_job_id="1002", company="חברה חסויה",
+                 title="Junior Python Developer", location="תל אביב", url="https://alljobs.test/1002"),
+        NOW,
+    )
+    j3, c3 = ingest(
+        session,
+        _posting(source="alljobs", source_job_id="1003", company="",
+                 title="Junior Python Developer", location="תל אביב", url="https://alljobs.test/1003"),
+        NOW,
+    )
+    # Re-ingesting the same confidential posting is still deduplicated idempotently.
+    j1_again, c_again = ingest(
+        session,
+        _posting(source="alljobs", source_job_id="1001", company="חברה חסויה",
+                 title="Junior Python Developer", location="תל אביב", url="https://alljobs.test/1001"),
+        NOW,
+    )
+    assert c1 and c2 and c3 and not c_again
+    assert len({j1.id, j2.id, j3.id}) == 3
+    assert j1_again.id == j1.id
+
+
 @pytest.mark.parametrize("a,b", [
     ("https://www.Example.com/jobs/1/", "https://example.com/jobs/1"),
     ("http://example.com/jobs/1#apply", "https://example.com/jobs/1"),

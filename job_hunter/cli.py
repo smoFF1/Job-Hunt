@@ -8,16 +8,19 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+import job_hunter.scrapers  # noqa: F401 - register site scrapers
 from job_hunter import PROJECT_ROOT
 from job_hunter.config import AppConfig, ConfigError, load_config
 from job_hunter.core.cv_loader import CVRecord, sync_cvs
-from job_hunter.core.db import get_engine, init_db, log_event, make_session_factory, session_scope
+from job_hunter.core.db import get_engine, init_db, log_event, make_session_factory, resolve_db_path, session_scope
 from job_hunter.core.models import STATUSES, Job, Run
 from job_hunter.core.pipeline import Evaluator, process_pending, rescore, run_postings
 from job_hunter.core.skills import SkillMatcher
+from job_hunter.scrapers.registry import registered_sites
+from job_hunter.scrapers.runner import ScrapeSummary, SiteDisabledError, import_html_file, scrape_site
 
 log = logging.getLogger("job_hunter")
 
@@ -26,7 +29,12 @@ class Context:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.cfg: AppConfig = load_config(args.config_dir, args.root)
-        self.engine = get_engine(args.db)
+        dry_run = bool(getattr(args, "dry_run", False))
+        db_file = resolve_db_path(args.db)
+        if dry_run and not db_file.exists():
+            self.engine = create_engine("sqlite:///:memory:", future=True)
+        else:
+            self.engine = get_engine(args.db)
         init_db(self.engine)
         self.factory = make_session_factory(self.engine)
         self.matcher = SkillMatcher(self.cfg.skills)
@@ -45,7 +53,9 @@ def _out(text: str = "") -> None:
     try:
         sys.stdout.write(text + "\n")
     except UnicodeEncodeError:
+        sys.stdout.flush()
         sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
+        sys.stdout.buffer.flush()
 
 
 # ----------------------------------------------------------------------------- commands
@@ -98,6 +108,68 @@ def cmd_rescore(ctx: Context) -> int:
 def _trunc(s: str, n: int) -> str:
     s = s or ""
     return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _print_scrape_summary(label: str, summary: ScrapeSummary) -> None:
+    prefix = "[DRY RUN] " if summary.dry_run else ""
+    run_part = "" if summary.run_id is None else f" run=#{summary.run_id}"
+    _out(
+        f"{prefix}{label} ({summary.site}){run_part}: pages={summary.pages_fetched} "
+        f"postings={summary.unique_postings} -> new={summary.new_count} "
+        f"duplicates={summary.duplicate_count} shortlisted={summary.shortlisted_count} "
+        f"skipped={summary.skipped_count} errors={len(summary.errors)}"
+    )
+    if summary.aborted and summary.abort_reason:
+        _out(f"STOPPED: {summary.abort_reason}")
+
+    if summary.dry_run and summary.previews:
+        scored = [p for p in summary.previews if p.evaluation is not None]
+        scored.sort(key=lambda p: (p.evaluation.status != "Shortlisted", -p.evaluation.score))  # type: ignore[union-attr]
+        _out(f"{'STATUS':<12} {'SCORE':>5}  {'CV':<6} {'TITLE':<40} {'COMPANY':<22}")
+        for item in scored[:30]:
+            ev = item.evaluation
+            assert ev is not None
+            _out(
+                f"{ev.status:<12} {ev.score:>5}  {(ev.cv_id or '-'):<6} "
+                f"{_trunc(item.posting.title, 40):<40} {_trunc(item.posting.company, 22):<22}"
+            )
+
+
+def cmd_scrape(ctx: Context) -> int:
+    a = ctx.args
+    try:
+        summary = scrape_site(
+            ctx.factory,
+            ctx.cfg,
+            ctx.matcher,
+            a.site,
+            dry_run=a.dry_run,
+            queries=a.query,
+            max_pages_override=a.max_pages,
+        )
+    except (SiteDisabledError, ValueError) as exc:
+        _out(f"Scrape error: {exc}")
+        return 1
+    _print_scrape_summary("Scrape", summary)
+    return 1 if summary.aborted else 0
+
+
+def cmd_import_html(ctx: Context) -> int:
+    a = ctx.args
+    try:
+        summary = import_html_file(
+            ctx.factory,
+            ctx.cfg,
+            ctx.matcher,
+            a.site,
+            a.file,
+            dry_run=a.dry_run,
+        )
+    except (FileNotFoundError, NotImplementedError, ValueError) as exc:
+        _out(f"Import error: {exc}")
+        return 1
+    _print_scrape_summary("Import HTML", summary)
+    return 0
 
 
 def cmd_list(ctx: Context) -> int:
@@ -167,6 +239,8 @@ COMMANDS = {
     "init-db": (cmd_init_db, "Create the database schema (idempotent)"),
     "load-cvs": (cmd_load_cvs, "Sync config/cvs.yaml into cv_versions and show extracted skills"),
     "seed": (cmd_seed, "Insert and process the 30 fake seed jobs (idempotent)"),
+    "scrape": (cmd_scrape, "Scrape an enabled job board and filter/score postings"),
+    "import-html": (cmd_import_html, "Parse a saved search HTML file offline and feed the pipeline"),
     "process": (cmd_process, "Filter and score jobs that were not processed yet"),
     "rescore": (cmd_rescore, "Re-run filter/score after a config change (New/Skipped/Shortlisted only)"),
     "list": (cmd_list, "Show jobs in a terminal table"),
@@ -176,15 +250,25 @@ COMMANDS = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="job_hunter", description="Job Hunter CLI (Phase 1: foundation)")
+    p = argparse.ArgumentParser(prog="job_hunter", description="Job Hunter CLI")
     p.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $JOB_HUNTER_DB or "
                    "data/job_hunter.db)")
     p.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ./config)")
     p.add_argument("--root", type=Path, default=PROJECT_ROOT, help="Project root for CV paths")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="command", required=True)
+    sites = registered_sites()
     for name, (_fn, help_text) in COMMANDS.items():
         sp = sub.add_parser(name, help=help_text)
+        if name == "scrape":
+            sp.add_argument("site", choices=sites, help="Registered site scraper (e.g. alljobs)")
+            sp.add_argument("--dry-run", action="store_true", help="Fetch and evaluate without writing to DB")
+            sp.add_argument("--max-pages", type=int, default=None, help="Override max_pages_per_run")
+            sp.add_argument("--query", action="append", default=None, help="Override search query (repeatable)")
+        if name == "import-html":
+            sp.add_argument("site", choices=sites, help="Registered site parser (e.g. alljobs)")
+            sp.add_argument("file", type=Path, help="Path to locally saved search-results HTML file")
+            sp.add_argument("--dry-run", action="store_true", help="Parse and evaluate without writing to DB")
         if name == "list":
             sp.add_argument("--status", choices=STATUSES)
             sp.add_argument("--min-score", type=int)
@@ -204,7 +288,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
     fn, _ = COMMANDS[args.command]
-    return fn(ctx)
+    try:
+        return fn(ctx)
+    finally:
+        ctx.engine.dispose()
 
 
 if __name__ == "__main__":  # pragma: no cover

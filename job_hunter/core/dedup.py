@@ -10,6 +10,7 @@ from job_hunter.core.text import normalize_for_match
 
 _COMPANY_SUFFIX_HE = re.compile(r'בע"?\s?מ')
 _COMPANY_SUFFIXES = {"ltd", "limited", "inc", "llc", "corp", "corporation", "co", "plc", "gmbh"}
+_CONFIDENTIAL_COMPANIES = {"", "חברה חסויה", "confidential"}
 _LOCATION_NOISE = {"israel", "ישראל", "il"}
 _NON_WORD = re.compile(r"[^\w]+")
 _TRACKING_PARAMS = {"fbclid", "gclid", "msclkid", "mc_cid", "mc_eid", "trk", "trackingid", "refid", "ref"}
@@ -33,8 +34,21 @@ def normalize_location(location: str | None) -> str:
     return " ".join(words)
 
 
-def fingerprint(company: str | None, title: str | None, location: str | None) -> str:
-    key = f"{normalize_company(company)}|{normalize_text(title)}|{normalize_location(location)}"
+def is_confidential_company(company: str | None) -> bool:
+    """True when company is missing/blank or a generic 'confidential employer' placeholder."""
+    return normalize_company(company) in _CONFIDENTIAL_COMPANIES
+
+
+def fingerprint(
+    company: str | None,
+    title: str | None,
+    location: str | None,
+    source_job_id: str | None = None,
+) -> str:
+    norm_co = normalize_company(company)
+    key = f"{norm_co}|{normalize_text(title)}|{normalize_location(location)}"
+    if norm_co in _CONFIDENTIAL_COMPANIES and source_job_id and source_job_id.strip():
+        key = f"{key}|{source_job_id.strip()}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 

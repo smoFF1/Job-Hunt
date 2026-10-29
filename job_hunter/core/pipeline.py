@@ -130,7 +130,7 @@ def find_duplicate(session: Session, fp: str, source: str, source_job_id: str | 
 def ingest(session: Session, posting: JobPosting, now: datetime | None = None) -> tuple[Job, bool]:
     """Insert a posting unless it is a duplicate. Duplicates only get last_seen_at bumped."""
     now = now or utcnow()
-    fp = fingerprint(posting.company, posting.title, posting.location)
+    fp = fingerprint(posting.company, posting.title, posting.location, posting.source_job_id)
     url_norm = normalize_url(posting.url)
     existing, key = find_duplicate(session, fp, posting.source, posting.source_job_id, url_norm)
     if existing is not None:

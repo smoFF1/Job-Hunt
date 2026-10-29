@@ -151,20 +151,39 @@ scoring:
   penalties:
     student_in_description: -20  # description mentions student/סטודנט without graduate/בוגר
 
-# Target roles (search queries for scrapers, Phase 2+).
+# Target roles (search queries for scrapers, Phase 2+ — EN + HE).
 roles:
   - QA Automation
   - AI Developer
-  - AI Engineer
   - Fullstack Developer
   - Backend Developer
   - Frontend Developer
   - DevOps Engineer
   - Embedded Software Engineer
   - Real-Time Software Engineer
-  - Software Engineer (Defense/Security)
+  - Software Engineer
+  - Junior Developer
+  - מפתח תוכנה
+  - מהנדס תוכנה
+  - מפתח Fullstack
+  - מפתח Backend
+  - מפתח Frontend
+  - אוטומציה QA
+  - מפתח AI
+  - מפתח Embedded
+  - ג'וניור מפתח
+  - בוגרי מדעי המחשב
 
 # Per-site config (Phase 2+). Each site needs `enabled`. LinkedIn is disabled by default.
 sites:
   linkedin:
     enabled: false
+  alljobs:
+    enabled: true
+    user_agent: "JobHunterPersonal/0.1 (personal job search)"
+    max_pages_per_query: 2
+    max_pages_per_run: 40
+    delay_min_seconds: 3.0
+    delay_max_seconds: 8.0
+    max_retries: 2
+    include_vip: false

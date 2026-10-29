@@ -64,3 +64,7 @@ class BaseScraper(ABC):
     @abstractmethod
     def fetch_detail(self, url: str) -> JobDetail:
         """Fetch and parse one job page."""
+
+    def parse_saved_html(self, html: str, *, now: datetime | None = None) -> list[JobPosting]:
+        """Parse a locally saved search-results HTML page into JobPostings (for `import-html`)."""
+        raise NotImplementedError(f"{self.__class__.__name__} does not support offline HTML import")

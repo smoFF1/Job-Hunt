@@ -18,6 +18,41 @@ def test_load_repo_search_and_skills(cfg):
         + s.scoring.domain_bonus + max(p for _, p in s.scoring.recency_buckets) == 100
     assert s.scoring.student_description_penalty == -20
     assert s.sites["linkedin"]["enabled"] is False
+    assert s.sites["alljobs"]["enabled"] is True
+    assert s.sites["alljobs"]["include_vip"] is False
+    assert s.sites["alljobs"]["max_pages_per_query"] == 2
+    assert s.sites["alljobs"]["max_pages_per_run"] == 40
+    assert "Software Engineer" in s.roles
+    assert "Software Engineer (Defense/Security)" not in s.roles
+    for expected_q in ("Junior Developer", "מפתח תוכנה", "ג'וניור מפתח", "בוגרי מדעי המחשב"):
+        assert expected_q in s.roles
+
+
+def test_alljobs_page_budget_covers_all_configured_queries(cfg):
+    s = cfg.search
+    alljobs = s.sites["alljobs"]
+    planned = len(s.roles) * alljobs["max_pages_per_query"]
+    assert planned <= alljobs["max_pages_per_run"], (
+        f"Planned {planned} pages ({len(s.roles)} queries * {alljobs['max_pages_per_query']}) "
+        f"exceeds max_pages_per_run={alljobs['max_pages_per_run']}"
+    )
+    assert cfg.warnings == []
+
+
+def test_insufficient_page_budget_emits_warning(tmp_path, caplog):
+    import logging
+
+    from job_hunter.scrapers.runner import check_page_budget
+
+    site_cfg = {"enabled": True, "max_pages_per_query": 2, "max_pages_per_run": 10}
+    d = write_config(tmp_path / "config", search_overrides={"sites": {"alljobs": site_cfg}})
+    loaded = load_config(d, tmp_path)
+    assert any("max_pages_per_run (10)" in w for w in loaded.warnings)
+
+    with caplog.at_level(logging.WARNING):
+        msg = check_page_budget("alljobs", loaded.search.roles, site_cfg)
+    assert msg is not None and "cannot cover all" in msg
+    assert any("cannot cover all" in rec.message for rec in caplog.records)
 
 
 def test_all_core_skills_are_in_vocabulary(cfg):

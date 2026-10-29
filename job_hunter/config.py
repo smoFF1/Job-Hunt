@@ -297,5 +297,18 @@ def load_config(config_dir: Path | None = None, root: Path | None = None) -> App
         if _alias_key(cs) not in known:
             warnings.append(f"profile.yaml: core skill '{cs}' is not in skills.yaml (it can't be matched)")
 
+    for site_name, site_cfg in search.sites.items():
+        if not site_cfg.get("enabled"):
+            continue
+        per_q = site_cfg.get("max_pages_per_query")
+        per_run = site_cfg.get("max_pages_per_run")
+        if per_q is not None and per_run is not None and search.roles:
+            planned = len(search.roles) * int(per_q)
+            if planned > int(per_run):
+                warnings.append(
+                    f"search.yaml: site '{site_name}' max_pages_per_run ({per_run}) is below planned budget "
+                    f"({len(search.roles)} queries * {per_q} pages = {planned}); trailing queries may be skipped"
+                )
+
     return AppConfig(root=root, config_dir=config_dir, profile=profile, cvs=cvs, search=search,
                      skills=skills, warnings=warnings)

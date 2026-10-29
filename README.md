@@ -4,7 +4,7 @@ Personal tool: scans Israeli job boards, filters/ranks entry-level software jobs
 and (later) pre-fills applications in a visible browser. **The human always submits.**
 See [docs/SPEC.md](docs/SPEC.md) and [AGENTS.md](AGENTS.md).
 
-**Status:** Phase 1 (foundation) — config, DB, CV loader, filter/scoring engine, CLI, seed data. No scraping yet.
+**Status:** Phase 2 (AllJobs scraper) — config, DB, CV loader, filter/scoring engine, AllJobs guest search scraper + offline HTML import, CLI, seed data.
 
 ## Setup
 
@@ -24,6 +24,9 @@ Put CV PDFs in `assets/cv/` (gitignored) and register them in `config/cvs.yaml`.
 python -m job_hunter init-db                 # create schema (idempotent)
 python -m job_hunter load-cvs                # sync cvs.yaml -> DB, show extracted skills
 python -m job_hunter seed                    # 30 fake jobs (idempotent)
+python -m job_hunter scrape alljobs --dry-run
+python -m job_hunter scrape alljobs
+python -m job_hunter import-html alljobs path\to\search_page.html --dry-run
 python -m job_hunter process                 # filter + score unprocessed jobs
 python -m job_hunter rescore                 # after config changes (New/Skipped/Shortlisted only)
 python -m job_hunter list --status Shortlisted --min-score 60
