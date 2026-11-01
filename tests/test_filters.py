@@ -20,9 +20,56 @@ def f(cfg) -> JobFilters:
     "מפתח/ת Backend בכיר/ה", "מפתחת בכירה", "ראש צוות פיתוח", "ראש קבוצת", "ראש קבוצה - תוכנה",
     "ארכיטקט תוכנה", "מנהל פיתוח", "מנהלת מוצר", "מפתח תוכנה ומנהל פרויקטים", "דרוש/ה למנהל",
     "והמנהל הטכני",
+    # Team lead variations (AllJobs gender-slash, dot, abbreviations, Leader)
+    "ראש /ת צוות פיתוח", "ראש/ת צוות אוטומציה", "ראש.ת צוות Fullstack", "ראשת צוות פיתוח",
+    "ראשי צוותים", "ראש הצוות", 'ר"צ פיתוח', 'ר״צ תוכנה', 'רש"צ', "מוביל /ת צוות פיתוח",
+    "מוביל.ת פיתוח אלגוריתמים ובקרה", "מוביל /ה טכנולוגי /ת", "Full Stack Team Leader",
+    "Software Team Leader (Defense)",
 ])
 def test_senior_title_skipped(f, title):
     assert f.senior_match(title), title
+
+
+@pytest.mark.parametrize("desc", [
+    "לחברת סייבר בתל אביב דרוש /ה ראש /ת צוות פיתוח Fullstack.",
+    "דרישות התפקיד: ניסיון כראש צוות פיתוח.",
+    "תיאור: ניהול צוות פיתוח של 5 מפתחים.",
+    "We are looking for a Team Leader to join our R&D group.",
+])
+def test_team_lead_in_description_skipped(f, desc):
+    d = f.evaluate("מפתח /ת Fullstack", desc)
+    assert d.skip and d.rule == "senior"
+    assert d.reason.startswith("Skipped - Senior Role")
+
+
+@pytest.mark.parametrize("desc", [
+    "השתלבות בצוות פיתוח בכפיפות לראש צוות.",
+    "עבודה צמודה מול ראש צוות פיתוח ומנהל מוצר.",
+    "הצטרפות לצוות של 5 מפתחים וראש צוות מנוסה.",
+])
+def test_reporting_to_team_lead_in_description_passes(f, desc):
+    d = f.evaluate("מפתח /ת תוכנה ג'וניור", desc)
+    assert not d.skip
+
+
+@pytest.mark.parametrize("company", [
+    "Infinity Labs R&D",
+    "Infinity Labs",
+    "Infinity Labs R&D Ltd.",
+    "אינפיניטי לאבס",
+    "Experis Academy",
+    "Experis Academy - Kickstart",
+    "אקספריס אקדמי",
+])
+def test_blocked_companies_skipped(f, company):
+    d = f.evaluate("Junior Software Developer", "ללא ניסיון, הכשרה מלאה", company=company)
+    assert d.skip and d.rule == "blocked_company"
+    assert d.reason.startswith("Skipped - Blocked Company")
+
+
+def test_non_blocked_company_passes(f):
+    d = f.evaluate("Junior Software Developer", "0-1 years Python", company="Experis Israel")
+    assert not d.skip
 
 
 @pytest.mark.parametrize("title", [

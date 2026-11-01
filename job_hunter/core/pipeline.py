@@ -82,7 +82,7 @@ class Evaluator:
     def evaluate(self, *, title: str, description: str, company: str = "", posted_at: datetime | None = None,
                  current_cv_id: str | None = None, now: datetime | None = None) -> Evaluation:
         now = now or utcnow()
-        decision = self.filters.evaluate(title, description)
+        decision = self.filters.evaluate(title, description, company=company)
         category = self.categorizer.categorize(title, description)
         cv = self._pick_cv(current_cv_id, category)
         breakdown, job_skills, matched = self.scorer.score(

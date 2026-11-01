@@ -12,6 +12,10 @@ dependencies = [
     "httpx>=0.27",
     "beautifulsoup4>=4.12",
     "protego>=0.3",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "Jinja2>=3.1",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -19,6 +23,9 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]
 include = ["job_hunter*"]
+
+[tool.setuptools.package-data]
+"job_hunter.dashboard" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

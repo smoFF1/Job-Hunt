@@ -85,6 +85,8 @@ class SearchConfig:
     scoring: ScoringConfig
     roles: list[str]
     sites: dict[str, dict[str, Any]]
+    senior_description_keywords: list[str] = field(default_factory=list)
+    blocked_companies: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -279,6 +281,10 @@ def load_search(path: Path) -> SearchConfig:
         scoring=scoring,
         roles=_str_list(d.get("roles"), "roles"),
         sites=sites,
+        senior_description_keywords=_str_list(
+            filters.get("senior_description_keywords"), "filters.senior_description_keywords"
+        ),
+        blocked_companies=_str_list(filters.get("blocked_companies"), "filters.blocked_companies"),
     )
 
 

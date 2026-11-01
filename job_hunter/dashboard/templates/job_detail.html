@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Job #{{ job.id }} — {{ job.title }} | Job Hunter{% endblock %}
+
+{% block content %}
+  <div style="margin-bottom: 0.75rem;">
+    <a href="/">&larr; Back to dashboard</a>
+  </div>
+  {% include "_detail_body.html" %}
+{% endblock %}

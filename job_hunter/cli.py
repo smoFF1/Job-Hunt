@@ -123,16 +123,22 @@ def _print_scrape_summary(label: str, summary: ScrapeSummary) -> None:
         _out(f"STOPPED: {summary.abort_reason}")
 
     if summary.dry_run and summary.previews:
-        scored = [p for p in summary.previews if p.evaluation is not None]
-        scored.sort(key=lambda p: (p.evaluation.status != "Shortlisted", -p.evaluation.score))  # type: ignore[union-attr]
-        _out(f"{'STATUS':<12} {'SCORE':>5}  {'CV':<6} {'TITLE':<40} {'COMPANY':<22}")
-        for item in scored[:30]:
-            ev = item.evaluation
-            assert ev is not None
-            _out(
-                f"{ev.status:<12} {ev.score:>5}  {(ev.cv_id or '-'):<6} "
-                f"{_trunc(item.posting.title, 40):<40} {_trunc(item.posting.company, 22):<22}"
-            )
+        passed = [
+            p for p in summary.previews
+            if p.evaluation is not None and p.evaluation.status != "Skipped"
+        ]
+        passed.sort(key=lambda p: (p.evaluation.status != "Shortlisted", -p.evaluation.score))  # type: ignore[union-attr]
+        if passed:
+            _out(f"{'STATUS':<12} {'SCORE':>5}  {'CV':<6} {'TITLE':<40} {'COMPANY':<22}")
+            for item in passed[:30]:
+                ev = item.evaluation
+                assert ev is not None
+                _out(
+                    f"{ev.status:<12} {ev.score:>5}  {(ev.cv_id or '-'):<6} "
+                    f"{_trunc(item.posting.title, 40):<40} {_trunc(item.posting.company, 22):<22}"
+                )
+        else:
+            _out("(no non-skipped postings to preview)")
 
 
 def cmd_scrape(ctx: Context) -> int:
@@ -235,6 +241,29 @@ def cmd_stats(ctx: Context) -> int:
     return 0
 
 
+DASHBOARD_HOST = "127.0.0.1"
+
+
+def cmd_dashboard(ctx: Context) -> int:
+    import uvicorn
+
+    from job_hunter.dashboard.app import create_app
+
+    port = int(ctx.args.port)
+    if not (1 <= port <= 65535):
+        _out(f"Dashboard error: invalid port {port} (must be 1..65535)")
+        return 2
+    app = create_app(session_factory=ctx.factory, cfg=ctx.cfg)
+    _out(f"Dashboard running at http://{DASHBOARD_HOST}:{port} (DB: {ctx.engine.url.database})")
+    uvicorn.run(
+        app,
+        host=DASHBOARD_HOST,
+        port=port,
+        log_level="info" if ctx.args.verbose else "warning",
+    )
+    return 0
+
+
 COMMANDS = {
     "init-db": (cmd_init_db, "Create the database schema (idempotent)"),
     "load-cvs": (cmd_load_cvs, "Sync config/cvs.yaml into cv_versions and show extracted skills"),
@@ -246,6 +275,7 @@ COMMANDS = {
     "list": (cmd_list, "Show jobs in a terminal table"),
     "explain": (cmd_explain, "Show the full decision and score breakdown for a job"),
     "stats": (cmd_stats, "Counts by status and recent runs"),
+    "dashboard": (cmd_dashboard, "Run local web dashboard on http://127.0.0.1:8000 (localhost only)"),
 }
 
 
@@ -275,6 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--limit", type=int, default=50)
         if name == "explain":
             sp.add_argument("job_id", type=int)
+        if name == "dashboard":
+            sp.add_argument("--port", type=int, default=8000, help="Port on 127.0.0.1 (default: 8000)")
     return p
 
 

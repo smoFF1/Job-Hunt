@@ -52,13 +52,20 @@ def detect_language(text: str | None) -> str:
     return "mixed"
 
 
+_HEBREW_GENDER_SEP = r"(?:\s*[/\\.]\s*(?:ת|ה|ית|ות|ים)|\s*\((?:ת|ה|ית)\))?[\s\-]+"
+
+
 def _keyword_piece(keyword: str, hebrew_prefixes: str) -> str:
     kw = normalize_for_match(keyword)
     piece = re.escape(kw)
-    # spaces and hyphens are interchangeable ("entry level" == "entry-level")
-    piece = re.sub(r"(?:\\ |\\-|-| )+", r"[\\s\\-]+", piece)
-    if has_hebrew(kw) and hebrew_prefixes:
-        piece = f"[{re.escape(hebrew_prefixes)}]{{0,2}}{piece}"
+    if has_hebrew(kw):
+        # Allow optional gender suffixes between Hebrew words (e.g. "ראש /ת צוות", "מוביל.ת פיתוח")
+        piece = re.sub(r"(?:\\ |\\-|-| )+", lambda _: _HEBREW_GENDER_SEP, piece)
+        if hebrew_prefixes:
+            piece = f"[{re.escape(hebrew_prefixes)}]{{0,2}}{piece}"
+    else:
+        # spaces and hyphens are interchangeable ("entry level" == "entry-level")
+        piece = re.sub(r"(?:\\ |\\-|-| )+", r"[\\s\\-]+", piece)
     return piece
 
 

@@ -4,7 +4,7 @@ Personal tool: scans Israeli job boards, filters/ranks entry-level software jobs
 and (later) pre-fills applications in a visible browser. **The human always submits.**
 See [docs/SPEC.md](docs/SPEC.md) and [AGENTS.md](AGENTS.md).
 
-**Status:** Phase 2 (AllJobs scraper) — config, DB, CV loader, filter/scoring engine, AllJobs guest search scraper + offline HTML import, CLI, seed data.
+**Status:** Phase 3 (Dashboard) — config, DB, CV loader, filter/scoring engine, AllJobs guest search scraper + offline HTML import, local FastAPI/Jinja2/htmx dashboard (`127.0.0.1` only), CLI, seed data.
 
 ## Setup
 
@@ -32,6 +32,7 @@ python -m job_hunter rescore                 # after config changes (New/Skipped
 python -m job_hunter list --status Shortlisted --min-score 60
 python -m job_hunter explain 9               # full decision + score breakdown
 python -m job_hunter stats
+python -m job_hunter dashboard               # local dashboard on http://127.0.0.1:8000 (supports --port)
 ```
 
 Global options: `--db PATH`, `--config-dir DIR`, `-v`.

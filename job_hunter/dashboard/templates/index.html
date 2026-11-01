@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% macro sort_header(label, key, default_order="asc") -%}
+  {%- if params.sort == key -%}
+    {%- set next_order = "asc" if params.order == "desc" else "desc" -%}
+    {%- set arrow = "▲" if params.order == "asc" else "▼" -%}
+  {%- else -%}
+    {%- set next_order = default_order -%}
+    {%- set arrow = "" -%}
+  {%- endif -%}
+  {%- set qs = params.query_string(include_sort=True, include_pagination=False, overrides={"sort": key, "order": next_order}) -%}
+  <a class="sort-link" href="/{% if qs %}?{{ qs }}{% endif %}">
+    <span>{{ label }}</span>
+    {% if arrow %}<span>{{ arrow }}</span>{% endif %}
+  </a>
+{%- endmacro %}
+
+{% block content %}
+  {% include "_status_counters.html" %}
+
+  <details class="panel" {% if runs %}open{% endif %}>
+    <summary>Last Runs ({{ runs | length }})</summary>
+    <div class="panel-body table-wrap">
+      {% if runs %}
+        <table class="runs-table">
+          <thead>
+            <tr>
+              <th>Run #</th>
+              <th>Platform / Site</th>
+              <th>Started (UTC)</th>
+              <th>Finished (UTC)</th>
+              <th>New</th>
+              <th>Shortlisted</th>
+              <th>Skipped</th>
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in runs %}
+              <tr>
+                <td class="num">#{{ r.id }}</td>
+                <td dir="auto">{{ r.site }}</td>
+                <td class="num">{{ fmt_dt(r.started_at) }}</td>
+                <td class="num">{{ fmt_dt(r.finished_at) }}</td>
+                <td class="num">{{ r.new_count }}</td>
+                <td class="num">{{ r.shortlisted_count }}</td>
+                <td class="num">{{ r.skipped_count }}</td>
+                <td class="num">{{ (r.errors or []) | length }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="muted">No runs recorded yet.</div>
+      {% endif %}
+    </div>
+  </details>
+
+  <section class="panel">
+    <div class="panel-body">
+      <form method="get" action="/" class="filters-form">
+        <input type="hidden" name="sort" value="{{ params.sort }}">
+        <input type="hidden" name="order" value="{{ params.order }}">
+
+        <div class="field">
+          <label for="f-q">Search</label>
+          <input id="f-q"
+                 type="search"
+                 name="q"
+                 class="search-input"
+                 dir="auto"
+                 value="{{ params.q }}"
+                 placeholder="Title, company, description…">
+        </div>
+
+        <div class="field">
+          <label for="f-status">Status</label>
+          <select id="f-status" name="status">
+            <option value="">All statuses</option>
+            {% for st in STATUSES %}
+              <option value="{{ st }}" {% if params.status == st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="f-platform">Platform</label>
+          <select id="f-platform" name="platform">
+            <option value="">All platforms</option>
+            {% for p in platforms %}
+              <option value="{{ p }}" {% if params.platform == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+            {% if params.platform and params.platform not in platforms %}
+              <option value="{{ params.platform }}" selected>{{ params.platform }}</option>
+            {% endif %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="f-min-score">Min Score</label>
+          <input id="f-min-score"
+                 type="number"
+                 name="min_score"
+                 class="score-input"
+                 min="0"
+                 max="100"
+                 value="{{ '' if params.min_score is none else params.min_score }}">
+        </div>
+
+        <div class="field">
+          <label for="f-max-score">Max Score</label>
+          <input id="f-max-score"
+                 type="number"
+                 name="max_score"
+                 class="score-input"
+                 min="0"
+                 max="100"
+                 value="{{ '' if params.max_score is none else params.max_score }}">
+        </div>
+
+        <div class="field">
+          <label for="f-date-from">From Date</label>
+          <input id="f-date-from"
+                 type="date"
+                 name="date_from"
+                 value="{{ params.date_from.isoformat() if params.date_from else '' }}">
+        </div>
+
+        <div class="field">
+          <label for="f-date-to">To Date</label>
+          <input id="f-date-to"
+                 type="date"
+                 name="date_to"
+                 value="{{ params.date_to.isoformat() if params.date_to else '' }}">
+        </div>
+
+        <div class="filter-actions">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="/" class="btn">Reset</a>
+          <a href="/jobs/export.csv{% if export_qs %}?{{ export_qs }}{% endif %}" class="btn">Export CSV</a>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="table-wrap">
+      <table class="jobs-table">
+        <thead>
+          <tr>
+            <th>{{ sort_header("Date", "date", "desc") }}</th>
+            <th>{{ sort_header("Company", "company", "asc") }}</th>
+            <th>{{ sort_header("Title", "title", "asc") }}</th>
+            <th>{{ sort_header("Platform", "platform", "asc") }}</th>
+            <th>{{ sort_header("Score", "score", "desc") }}</th>
+            <th>{{ sort_header("Status", "status", "asc") }}</th>
+            <th>CV</th>
+            <th>Reason</th>
+            <th>Notes</th>
+            <th>Job URL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if jobs %}
+            {% for job in jobs %}
+              {% include "_job_row.html" %}
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="10" class="muted">No jobs match the current filter.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination-bar">
+      <div>
+        {% if total_matching == 0 %}
+          0 matching jobs
+        {% else %}
+          {% set start_idx = (effective_page - 1) * params.per_page + 1 %}
+          {% set end_idx = start_idx + (jobs | length) - 1 %}
+          Showing {{ start_idx }}–{{ end_idx }} of {{ total_matching }} jobs (page {{ effective_page }} of {{ total_pages }})
+        {% endif %}
+      </div>
+      <div class="pagination-controls">
+        {% if effective_page > 1 %}
+          {% set prev_qs = params.query_string(include_sort=True, include_pagination=True, overrides={"page": effective_page - 1}) %}
+          <a class="btn btn-sm" href="/{% if prev_qs %}?{{ prev_qs }}{% endif %}">&larr; Prev</a>
+        {% else %}
+          <button type="button" class="btn btn-sm" disabled>&larr; Prev</button>
+        {% endif %}
+
+        {% if effective_page < total_pages %}
+          {% set next_qs = params.query_string(include_sort=True, include_pagination=True, overrides={"page": effective_page + 1}) %}
+          <a class="btn btn-sm" href="/{% if next_qs %}?{{ next_qs }}{% endif %}">Next &rarr;</a>
+        {% else %}
+          <button type="button" class="btn btn-sm" disabled>Next &rarr;</button>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

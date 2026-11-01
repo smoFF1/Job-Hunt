@@ -1,0 +1,230 @@
+<div id="detail-body">
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <strong dir="auto">{{ job.title }}</strong>
+        {% if job.company %}
+          &middot; <span dir="auto">{{ job.company }}</span>
+        {% endif %}
+      </div>
+      <div class="row-actions">
+        {% if saved %}
+          <span class="saved-flash">Saved</span>
+        {% endif %}
+        {% set safe_url = safe_external_url(job.url) %}
+        {% if safe_url %}
+          <a href="{{ safe_url }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="btn btn-sm btn-primary">Open job</a>
+        {% else %}
+          <span class="muted">No valid URL</span>
+        {% endif %}
+        {% set safe_apply = safe_external_url(job.apply_url) %}
+        {% if safe_apply and safe_apply != safe_url %}
+          <a href="{{ safe_apply }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="btn btn-sm">Apply link</a>
+        {% endif %}
+        {% if job.status == "Shortlisted" %}
+          <button type="button"
+                  class="btn btn-sm"
+                  disabled
+                  title="Phase 4 — application pre-fill is not implemented yet">Prepare application</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="panel-body detail-grid">
+      <dl class="meta-list">
+        <dt>Job ID</dt>
+        <dd class="num">#{{ job.id }}</dd>
+        <dt>Platform</dt>
+        <dd dir="auto">{{ job.source }}{% if job.source_job_id %} ({{ job.source_job_id }}){% endif %}</dd>
+        <dt>Location</dt>
+        <dd dir="auto">{{ job.location or "—" }}</dd>
+        <dt>Language</dt>
+        <dd>{{ job.language or "—" }}</dd>
+        <dt>Posted</dt>
+        <dd class="num">{{ fmt_dt(job.posted_at) }}</dd>
+        <dt>First Seen</dt>
+        <dd class="num">{{ fmt_dt(job.first_seen_at) }}</dd>
+        <dt>Last Seen</dt>
+        <dd class="num">{{ fmt_dt(job.last_seen_at) }}</dd>
+        <dt>Updated</dt>
+        <dd class="num">{{ fmt_dt(job.updated_at) }}</dd>
+        <dt>Stored Reason</dt>
+        <dd dir="auto">{{ job.status_reason or "—" }}</dd>
+      </dl>
+
+      <div class="detail-controls-grid">
+        <div class="detail-controls-row">
+          <form method="post" action="/jobs/{{ job.id }}/status" class="field">
+            <input type="hidden" name="context" value="detail">
+            <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
+            <label for="detail-status">Status</label>
+            <select id="detail-status"
+                    name="status"
+                    class="status-select status-{{ status_slug(job.status) }}"
+                    hx-post="/jobs/{{ job.id }}/status"
+                    hx-target="#detail-body"
+                    hx-swap="outerHTML"
+                    hx-trigger="change">
+              {% for st in STATUSES %}
+                <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
+              {% endfor %}
+            </select>
+            <noscript><button type="submit" class="btn btn-sm">Set Status</button></noscript>
+          </form>
+
+          <form method="post" action="/jobs/{{ job.id }}/cv" class="field">
+            <input type="hidden" name="context" value="detail">
+            <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
+            <label for="detail-cv">Selected CV</label>
+            <select id="detail-cv"
+                    name="cv_id"
+                    class="cv-select"
+                    hx-post="/jobs/{{ job.id }}/cv"
+                    hx-target="#detail-body"
+                    hx-swap="outerHTML"
+                    hx-trigger="change">
+              <option value="" {% if not job.cv_id %}selected{% endif %}>—</option>
+              {% for opt in cv_options %}
+                <option value="{{ opt.id }}" {% if opt.id == job.cv_id %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+            <noscript><button type="submit" class="btn btn-sm">Set CV</button></noscript>
+          </form>
+        </div>
+
+        <form method="post"
+              action="/jobs/{{ job.id }}/notes"
+              class="field"
+              hx-post="/jobs/{{ job.id }}/notes"
+              hx-target="#detail-body"
+              hx-swap="outerHTML">
+          <input type="hidden" name="context" value="detail">
+          <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
+          <label for="detail-notes">Notes</label>
+          <textarea id="detail-notes"
+                    name="notes"
+                    rows="3"
+                    dir="auto"
+                    placeholder="Personal notes about this position…">{{ job.notes }}</textarea>
+          <div>
+            <button type="submit" class="btn btn-sm btn-primary">Save notes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <span>Score Breakdown (<code>explain</code>)</span>
+      <span class="muted">
+        Stored score: <strong>{{ "—" if job.match_score is none else job.match_score }}</strong>
+        &middot; Current config score: <strong>{{ ev.score }}</strong> (threshold {{ threshold }})
+      </span>
+    </div>
+    <div class="panel-body">
+      <dl class="meta-list" style="margin-bottom: 0.85rem;">
+        <dt>Category</dt>
+        <dd dir="auto">
+          {{ ev.category.category.name }}
+          (matched in {{ ev.category.where or "—" }}: {{ ev.category.matched or "—" }})
+        </dd>
+        <dt>Experience Min</dt>
+        <dd dir="auto">
+          {{ "—" if ev.decision.years_min is none else ev.decision.years_min }}
+          {% if ev.decision.experience_evidence %}
+            (evidence: {{ ev.decision.experience_evidence }})
+          {% endif %}
+        </dd>
+        {% if ev.decision.skip %}
+          <dt>Filter Rule</dt>
+          <dd dir="auto">{{ ev.decision.rule }} &rarr; {{ ev.decision.reason }}</dd>
+        {% endif %}
+        <dt>Evaluated Outcome</dt>
+        <dd dir="auto">{{ ev.status }} &middot; CV: {{ ev.cv_id or "—" }} &middot; {{ ev.status_reason }}</dd>
+      </dl>
+
+      <table class="breakdown-table">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Points</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for part in ["role", "skills", "seniority", "domain", "recency", "penalty"] %}
+            <tr>
+              <td><code>{{ part }}</code></td>
+              <td class="num">{{ ev.breakdown | attr(part) }}</td>
+              <td dir="auto">{{ ev.breakdown.notes.get(part, "") }}</td>
+            </tr>
+          {% endfor %}
+          <tr>
+            <td><strong>TOTAL</strong></td>
+            <td class="num"><strong>{{ ev.breakdown.total }}</strong></td>
+            <td>Shortlist threshold: {{ threshold }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top: 0.85rem;">
+        <div class="muted" style="margin-bottom: 0.35rem;">
+          Job Skills ({{ ev.job_skills | length }} detected, {{ ev.matched_skills | length }} matched):
+        </div>
+        {% if ev.job_skills %}
+          <div class="skills-wrap">
+            {% for sk in ev.job_skills %}
+              <span class="skill-tag {% if sk in ev.matched_skills %}matched{% endif %}">{{ sk }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <span class="muted">No known skills listed in job text.</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <span>Description (Plain Text)</span>
+    </div>
+    <div class="panel-body">
+      <pre class="job-description" dir="auto">{{ job.description_text or "(No description text)" }}</pre>
+    </div>
+  </section>
+
+  <details class="panel">
+    <summary>Event Log for Job #{{ job.id }} ({{ events | length }})</summary>
+    <div class="panel-body table-wrap">
+      {% if events %}
+        <table class="runs-table">
+          <thead>
+            <tr>
+              <th>Timestamp (UTC)</th>
+              <th>Action</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in events %}
+              <tr>
+                <td class="num">{{ fmt_dt(e.timestamp) }}</td>
+                <td><code>{{ e.action }}</code></td>
+                <td dir="auto">{{ e.result }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="muted">No events recorded.</div>
+      {% endif %}
+    </div>
+  </details>
+</div>

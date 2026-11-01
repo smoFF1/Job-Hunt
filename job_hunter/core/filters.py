@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 
 from job_hunter.config import SearchConfig
+from job_hunter.core.dedup import normalize_company
 from job_hunter.core.text import KeywordMatcher, normalize_for_match
 
 # ----------------------------------------------------------------------------- experience
@@ -110,7 +111,7 @@ class ExperienceResult:
 class FilterDecision:
     skip: bool
     reason: str | None  # e.g. "Skipped - Senior Role (matched: 'senior')"
-    rule: str | None  # 'senior' | 'student' | 'experience'
+    rule: str | None  # 'blocked_company' | 'senior' | 'student' | 'experience'
     years_min: float | None
     experience_evidence: str | None
 
@@ -119,13 +120,22 @@ class JobFilters:
     def __init__(self, cfg: SearchConfig):
         self.cfg = cfg
         p = cfg.hebrew_prefixes
+        self.blocked_company = KeywordMatcher(cfg.blocked_companies, p)
         self.senior = KeywordMatcher(cfg.senior_title_keywords, p)
+        self.senior_desc = KeywordMatcher(cfg.senior_description_keywords, p)
         self.student = KeywordMatcher(cfg.student_keywords, p)
         self.graduate = KeywordMatcher(cfg.graduate_keywords, p)
         self.advantage = KeywordMatcher(cfg.advantage_markers, p)
 
-    def senior_match(self, title: str) -> str | None:
-        return self.senior.search(title)
+    def blocked_company_match(self, company: str, title: str = "") -> str | None:
+        return (
+            self.blocked_company.search(company)
+            or self.blocked_company.search(normalize_company(company))
+            or self.blocked_company.search(title)
+        )
+
+    def senior_match(self, title: str, description: str = "") -> str | None:
+        return self.senior.search(title) or self.senior_desc.search(description)
 
     def student_only_match(self, title: str, description: str) -> str | None:
         hit = self.student.search(title)
@@ -154,12 +164,17 @@ class JobFilters:
                     best = m
         return ExperienceResult(best.years if best else None, best.text if best else None, ignored)
 
-    def evaluate(self, title: str, description: str) -> FilterDecision:
+    def evaluate(self, title: str, description: str, company: str = "") -> FilterDecision:
         title = title or ""
         description = description or ""
+        company = company or ""
         exp = self.extract_experience(description)
 
-        hit = self.senior_match(title)
+        hit = self.blocked_company_match(company, title)
+        if hit:
+            return FilterDecision(True, f"Skipped - Blocked Company (matched: '{hit}')", "blocked_company",
+                                  exp.years_min, exp.evidence)
+        hit = self.senior_match(title, description)
         if hit:
             return FilterDecision(True, f"Skipped - Senior Role (matched: '{hit}')", "senior",
                                   exp.years_min, exp.evidence)

@@ -300,6 +300,7 @@ def test_cli_import_html_synthetic_and_dry_run(project, tmp_path, patch_cv_extra
     assert code == 0
     assert "[DRY RUN] Import HTML (alljobs)" in out
     assert "Junior AI Developer" in out
+    assert "VP Engineering" not in out
     assert not db_path.exists()
 
     # 2. Real import -> writes jobs, runs, events
@@ -339,6 +340,7 @@ def test_cli_import_html_with_saved_fixtures(project, tmp_path, patch_cv_extract
     ])
     out1 = capsys.readouterr().out
     assert code1 == 0 and "[DRY RUN]" in out1 and "postings=15" in out1
+    assert "Infinity Labs" not in out1
 
     code2 = main([
         "--db", str(db_path),

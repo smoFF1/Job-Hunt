@@ -30,7 +30,11 @@ def resolve_db_path(db_path: str | Path | None = None) -> Path:
 def get_engine(db_path: str | Path | None = None) -> Engine:
     path = resolve_db_path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{path.as_posix()}", future=True)
+    engine = create_engine(
+        f"sqlite:///{path.as_posix()}",
+        connect_args={"check_same_thread": False},
+        future=True,
+    )
 
     @event.listens_for(engine, "connect")
     def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - trivial

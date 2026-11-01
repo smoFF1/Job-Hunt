@@ -11,10 +11,18 @@ llm_tiebreaker: false         # optional LLM tiebreaker (not implemented in Phas
 hebrew_prefixes: "ובהלש"
 
 filters:
+  blocked_companies:
+    - Infinity Labs R&D
+    - Infinity Labs
+    - אינפיניטי לאבס
+    - Experis Academy
+    - אקספריס אקדמי
   senior_title_keywords:
     - senior
     - sr
     - lead
+    - leader
+    - leaders
     - principal
     - staff
     - architect
@@ -22,15 +30,76 @@ filters:
     - director
     - head of
     - vp
+    - cto
     - בכיר
     - בכירה
+    - בכירים
+    - בכירות
     - ראש צוות
+    - ראש הצוות
+    - ראשת צוות
+    - ראשי צוות
+    - ראשי צוותים
+    - ראש צוותים
+    - ראשות צוות
+    - ר"צ
+    - רש"צ
     - ראש קבוצה
     - ראש קבוצת         # construct form ("ראש קבוצת פיתוח")
+    - ראשת קבוצה
+    - ראשי קבוצות
+    - ראש תחום
+    - ראשת תחום
+    - ראש מחלקה
+    - ראשת מחלקה
+    - ראש ענף
+    - ראש מדור
+    - ראש אגף
+    - מוביל צוות
+    - מובילת צוות
+    - מוביל קבוצה
+    - מובילת קבוצה
+    - מוביל פיתוח
+    - מובילת פיתוח
+    - מוביל טכנולוגי
+    - מובילה טכנולוגית
+    - הובלת צוות
+    - ניהול צוות
     - ארכיטקט
     - ארכיטקטית
     - מנהל
     - מנהלת
+    - מנהלים
+    - מנהלות
+  # Unambiguous phrases in the description indicating the role itself is a Team Lead position
+  # (avoids false positives like "בכפיפות לראש צוות" / "עבודה מול ראש צוות").
+  senior_description_keywords:
+    - דרוש ראש צוות
+    - דרושה ראש צוות
+    - דרושה ראשת צוות
+    - דרושים ראשי צוות
+    - דרושים ראשי צוותים
+    - מחפשים ראש צוות
+    - מחפשת ראש צוות
+    - מגייסים ראש צוות
+    - מגייסת ראש צוות
+    - לתפקיד ראש צוות
+    - תפקיד ראש צוות
+    - משרת ראש צוות
+    - כראש צוות
+    - ניסיון בניהול צוות
+    - ניהול צוות פיתוח
+    - ניהול צוות מפתחים
+    - ניהול צוות בדיקות
+    - ניהול צוות אוטומציה
+    - הובלת צוות פיתוח
+    - הובלת צוות מפתחים
+    - looking for a team lead
+    - looking for a team leader
+    - hiring a team lead
+    - hiring a team leader
+    - experience as a team lead
+    - experience as a team leader
   # Student-only skip is applied to the TITLE only; student in description gets a score penalty.
   student_keywords: [student, students, סטודנט, סטודנטית, סטודנטים, סטודנטיות]
   # ...unless one of these appears anywhere (title or description).

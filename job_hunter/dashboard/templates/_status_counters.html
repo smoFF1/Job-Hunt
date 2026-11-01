@@ -1,0 +1,18 @@
+<div id="status-counters"
+     class="counters-bar"
+     hx-get="/partials/counters{% if params.status %}?status={{ params.status | urlencode }}{% endif %}"
+     hx-trigger="jobsChanged from:body"
+     hx-swap="outerHTML">
+  <a href="/"
+     class="counter-chip {% if not params.status %}active{% endif %}">
+    <span>All</span>
+    <span class="count">{{ total_all }}</span>
+  </a>
+  {% for st in STATUSES %}
+    <a href="/?status={{ st | urlencode }}"
+       class="counter-chip status-{{ status_slug(st) }} {% if params.status == st %}active{% endif %}">
+      <span>{{ st }}</span>
+      <span class="count">{{ status_counts.get(st, 0) }}</span>
+    </a>
+  {% endfor %}
+</div>

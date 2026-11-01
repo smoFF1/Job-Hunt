@@ -1,0 +1,93 @@
+<tr id="job-row-{{ job.id }}">
+  <td class="num">{{ fmt_dt(job.first_seen_at, include_time=False) }}</td>
+  <td class="cell-company" dir="auto">{{ job.company or "—" }}</td>
+  <td class="cell-title" dir="auto">
+    <a href="/jobs/{{ job.id }}" dir="auto">{{ job.title }}</a>
+    {% if job.location %}
+      <div class="muted" dir="auto">{{ job.location }}</div>
+    {% endif %}
+  </td>
+  <td dir="auto">{{ job.source }}</td>
+  <td class="num">
+    {% if job.match_score is none %}
+      <span class="score-pill score-low">—</span>
+    {% else %}
+      <span class="score-pill score-{{ score_tier(job.match_score, threshold) }}">{{ job.match_score }}</span>
+    {% endif %}
+  </td>
+  <td>
+    <form method="post" action="/jobs/{{ job.id }}/status">
+      <input type="hidden" name="context" value="row">
+      <input type="hidden" name="next_url" value="{{ current_path }}">
+      <select name="status"
+              class="status-select status-{{ status_slug(job.status) }}"
+              aria-label="Status for job {{ job.id }}"
+              hx-post="/jobs/{{ job.id }}/status"
+              hx-target="#job-row-{{ job.id }}"
+              hx-swap="outerHTML"
+              hx-trigger="change">
+        {% for st in STATUSES %}
+          <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-sm">Set</button></noscript>
+    </form>
+  </td>
+  <td>
+    <form method="post" action="/jobs/{{ job.id }}/cv">
+      <input type="hidden" name="context" value="row">
+      <input type="hidden" name="next_url" value="{{ current_path }}">
+      <select name="cv_id"
+              class="cv-select"
+              aria-label="CV for job {{ job.id }}"
+              hx-post="/jobs/{{ job.id }}/cv"
+              hx-target="#job-row-{{ job.id }}"
+              hx-swap="outerHTML"
+              hx-trigger="change">
+        <option value="" {% if not job.cv_id %}selected{% endif %}>—</option>
+        {% for opt in cv_options %}
+          <option value="{{ opt.id }}" {% if opt.id == job.cv_id %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-sm">Set</button></noscript>
+    </form>
+  </td>
+  <td class="cell-reason" dir="auto">{{ job.status_reason }}</td>
+  <td class="cell-notes">
+    <form method="post"
+          action="/jobs/{{ job.id }}/notes"
+          class="inline-notes-form"
+          hx-post="/jobs/{{ job.id }}/notes"
+          hx-target="#job-row-{{ job.id }}"
+          hx-swap="outerHTML">
+      <input type="hidden" name="context" value="row">
+      <input type="hidden" name="next_url" value="{{ current_path }}">
+      <input type="text"
+             name="notes"
+             value="{{ job.notes }}"
+             dir="auto"
+             placeholder="Notes…"
+             aria-label="Notes for job {{ job.id }}">
+      <button type="submit" class="btn btn-sm">Save</button>
+    </form>
+  </td>
+  <td>
+    <div class="row-actions">
+      {% set safe_url = safe_external_url(job.url) %}
+      {% if safe_url %}
+        <a href="{{ safe_url }}"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="btn btn-sm">Open job</a>
+      {% else %}
+        <span class="muted">No URL</span>
+      {% endif %}
+      {% if job.status == "Shortlisted" %}
+        <button type="button"
+                class="btn btn-sm"
+                disabled
+                title="Phase 4 — application pre-fill is not implemented yet">Prepare application</button>
+      {% endif %}
+    </div>
+  </td>
+</tr>

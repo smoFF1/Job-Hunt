@@ -1,0 +1,553 @@
+/* Job Hunter Dashboard — clean, minimal, local-only, RTL/Hebrew friendly */
+
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-alt: #f1f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-subtle: #64748b;
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --radius: 6px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Hebrew", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.topbar {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.topbar a {
+  color: #f8fafc;
+  text-decoration: none;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand .subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2.5rem;
+}
+
+/* Status counters */
+.counters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.9rem;
+  align-items: center;
+}
+
+.counter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.counter-chip:hover {
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+
+.counter-chip.active {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.counter-chip .count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Semantic status colors (all 10 statuses) */
+.status-badge,
+.status-select {
+  font-weight: 600;
+  border-radius: var(--radius);
+}
+
+.status-new {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.status-skipped {
+  background-color: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.status-shortlisted {
+  background-color: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.status-needs-input {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.status-ready-for-review {
+  background-color: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+}
+
+.status-applied {
+  background-color: #cffafe;
+  color: #0e7490;
+  border-color: #67e8f9;
+}
+
+.status-rejected {
+  background-color: #ffe4e6;
+  color: #9f1239;
+  border-color: #fda4af;
+}
+
+.status-interview {
+  background-color: #d1fae5;
+  color: #065f46;
+  border-color: #6ee7b7;
+}
+
+.status-failed {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.status-expired {
+  background-color: #f5f5f4;
+  color: #57534e;
+  border-color: #d6d3d1;
+}
+
+/* Panels & cards */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 0.9rem;
+}
+
+.panel-header {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-body {
+  padding: 0.75rem 0.9rem;
+}
+
+details.panel > summary {
+  padding: 0.55rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  list-style: revert;
+}
+
+details.panel[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Filter bar */
+.filters-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.field label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+input[type="text"],
+input[type="search"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.34rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+}
+
+input[type="number"].score-input {
+  width: 4.5rem;
+}
+
+input[type="search"].search-input {
+  min-width: 14rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.36rem 0.7rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-alt);
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  color: #fff;
+}
+
+.btn-sm {
+  font-size: 0.76rem;
+  padding: 0.24rem 0.5rem;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface-alt);
+  color: var(--text-subtle);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin-inline-start: auto;
+}
+
+/* Jobs table */
+.table-wrap {
+  overflow-x: auto;
+}
+
+table.jobs-table,
+table.runs-table,
+table.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+table.jobs-table th,
+table.jobs-table td,
+table.runs-table th,
+table.runs-table td,
+table.breakdown-table th,
+table.breakdown-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: start;
+}
+
+table.jobs-table thead th,
+table.runs-table thead th,
+table.breakdown-table thead th {
+  background: var(--surface-alt);
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+table.jobs-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+th a.sort-link {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.score-pill {
+  display: inline-block;
+  min-width: 2rem;
+  text-align: center;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-alt);
+}
+
+.score-high {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.score-mid {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.score-low {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.cell-title {
+  min-width: 13rem;
+  max-width: 20rem;
+  font-weight: 600;
+}
+
+.cell-company {
+  min-width: 8rem;
+  max-width: 13rem;
+}
+
+.cell-reason {
+  min-width: 12rem;
+  max-width: 18rem;
+  color: var(--text-muted);
+  font-size: 0.79rem;
+}
+
+.cell-notes {
+  min-width: 11rem;
+}
+
+.inline-notes-form {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.inline-notes-form input[type="text"] {
+  width: 100%;
+  min-width: 8rem;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.status-select {
+  padding: 0.24rem 0.4rem;
+  font-size: 0.8rem;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.cv-select {
+  padding: 0.24rem 0.4rem;
+  font-size: 0.8rem;
+  max-width: 9rem;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.muted {
+  color: var(--text-subtle);
+  font-size: 0.8rem;
+}
+
+/* Pagination */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.9rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+/* Detail page */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 960px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.meta-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+}
+
+.meta-list dt {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.meta-list dd {
+  margin: 0;
+}
+
+.skills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.skill-tag {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+
+.skill-tag.matched {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+  font-weight: 600;
+}
+
+pre.job-description {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  background: #fcfcfd;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.detail-controls-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.detail-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.saved-flash {
+  font-size: 0.76rem;
+  color: #166534;
+  font-weight: 600;
+}
