@@ -7,8 +7,10 @@ and (4) ON DEMAND pre-fills application forms in a VISIBLE browser and STOPS bef
 submission. The human always submits.
 
 ## Tech stack
-Python 3.11+, Playwright (scraping; later the visible pre-fill browser), SQLite via
-SQLAlchemy, PyYAML, pdfplumber/pypdf, pytest, ruff. Dashboard (Phase 3): FastAPI + Jinja2 (+htmx), localhost only.
+Python 3.11+, httpx + BeautifulSoup + protego (robots.txt with wildcards) for scraping,
+SQLAlchemy/SQLite, PyYAML, pdfplumber/pypdf, FastAPI + Jinja2 + htmx dashboard (localhost only),
+pytest, ruff. Playwright is only planned for the deferred applicator.
+
 
 ## Candidate data & CVs
 - config/profile.yaml: personal details (name, email, phones, location, links, education, level). Single source of truth.
@@ -48,9 +50,9 @@ Statuses: New, Skipped, Shortlisted, Needs Input, Ready for Review, Applied, Rej
 - Every decision stores a human-readable status_reason.
 
 ## Phases
-1. Foundation (no scraping): skeleton, config, DB schema, cv_loader, filter/scoring engine + tests, CLI, seed script.
-2. Scrapers: one site at a time, starting with AllJobs or Drushim. Fixtures for tests, login.py for manual login.
-3. Dashboard: table, filters, status/CV dropdowns, notes, CSV export, Hebrew/RTL.
-4. Applicator: on-demand pre-fill in a visible browser, stop before submit.
-5. Daily run: run_daily.py with lock file, catch-up, summary; scheduling via OS scheduler or /schedule running the script.
-6. Applicator (DEFERRED): AllJobs apply is one click when logged in, so not needed there. Build only when a site with a real long apply form is added; design against saved real forms. Interface applicants/base.py already exists.
+1. DONE — Foundation: skeleton, config, DB schema, cv_loader, filter/scoring engine, CLI, seed.
+2. DONE — AllJobs scraper (httpx, robots-aware, offline fixtures, import-html, scrape CLI).
+3. DONE — Dashboard (FastAPI/Jinja2/htmx, localhost only).
+4. NEXT — On-demand scan from the dashboard: "Scan" button (NO scheduler), site selection, progress, cooldown, lock.
+5. Score calibration on real data + more sites (Drushim, SQLINK), one at a time, each with a robots.txt/ToS check and saved HTML fixtures.
+6. DEFERRED — Applicator (visible browser, stop before submit). AllJobs apply is one click when logged in, so not needed there. Build only when a site with a real long apply form is added; design against saved real forms. Interface applicants/base.py exists.
