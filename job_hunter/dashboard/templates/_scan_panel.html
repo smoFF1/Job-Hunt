@@ -1,0 +1,253 @@
+{% set is_running = scan_state.state == "running" %}
+<section id="scan-panel"
+         class="panel scan-panel"
+         {% if is_running %}
+         hx-get="/scan/status"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML"
+         {% endif %}>
+  <div class="panel-header">
+    <div>
+      <span>On-Demand Scan</span>
+      <span class="muted" style="font-weight: 400; margin-inline-start: 0.45rem;">
+        Manual trigger only &middot; nothing runs automatically
+      </span>
+    </div>
+    {% if is_running %}
+      <span class="scan-state-pill state-running">
+        Scanning{% if scan_state.dry_run %} (Dry Run){% endif %}&hellip;
+      </span>
+    {% elif scan_state.state == "stopped" %}
+      <span class="scan-state-pill state-stopped">Stopped</span>
+    {% elif scan_state.state == "failed" %}
+      <span class="scan-state-pill state-failed">Failed</span>
+    {% elif scan_state.state == "completed" %}
+      <span class="scan-state-pill state-completed">
+        Completed{% if scan_state.dry_run %} (Dry Run){% endif %}
+      </span>
+    {% endif %}
+  </div>
+
+  <div class="panel-body">
+    {% if scan_error %}
+      <div class="scan-alert scan-alert-error" role="alert" dir="auto">{{ scan_error }}</div>
+    {% endif %}
+
+    <div class="scan-controls-bar">
+      <form id="scan-start-form"
+            method="post"
+            action="/scan"
+            hx-post="/scan"
+            hx-target="#scan-panel"
+            hx-swap="outerHTML"
+            class="scan-start-form">
+        <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+
+        <div class="scan-sites-grid">
+          {% if site_statuses %}
+            {% for st in site_statuses %}
+              <label class="scan-site-card {% if not st.selectable %}is-unavailable{% endif %}">
+                <span class="scan-site-top">
+                  <input type="checkbox"
+                         name="sites"
+                         value="{{ st.name }}"
+                         {% if st.selectable and not is_running %}checked{% endif %}
+                         {% if not st.selectable or is_running %}disabled{% endif %}>
+                  <strong dir="auto">{{ st.name }}</strong>
+                  {% if not st.enabled %}
+                    <span class="site-pill site-disabled">disabled in config</span>
+                  {% elif st.blocked_lockout %}
+                    <span class="site-pill site-blocked">{{ st.cooldown_label }}</span>
+                  {% elif st.on_cooldown %}
+                    <span class="site-pill site-cooldown">{{ st.cooldown_label }}</span>
+                  {% else %}
+                    <span class="site-pill site-ready">ready</span>
+                  {% endif %}
+                </span>
+                <span class="scan-site-meta muted">
+                  Last scan:
+                  <span class="num">{{ fmt_dt(st.last_scan_at) if st.last_scan_at else "Never" }}</span>
+                  {% if st.blocked_lockout and st.block_reason %}
+                    &middot; <span class="block-reason-text" dir="auto">{{ st.block_reason }}</span>
+                  {% endif %}
+                </span>
+              </label>
+            {% endfor %}
+          {% else %}
+            <span class="muted">No site scrapers registered.</span>
+          {% endif %}
+        </div>
+
+        <div class="scan-options-row">
+          <div class="field">
+            <label for="scan-extra-query">Extra query (optional one-off search term)</label>
+            <input id="scan-extra-query"
+                   type="text"
+                   name="extra_query"
+                   class="extra-query-input"
+                   maxlength="100"
+                   dir="auto"
+                   placeholder="Leave blank to scan all configured roles…"
+                   {% if is_running %}disabled{% endif %}>
+          </div>
+
+          <label class="checkbox-inline">
+            <input type="checkbox"
+                   name="dry_run"
+                   value="1"
+                   {% if is_running %}disabled{% endif %}>
+            <span>Dry run (preview, save nothing)</span>
+          </label>
+        </div>
+      </form>
+
+      <div class="scan-buttons">
+        <button type="submit"
+                form="scan-start-form"
+                class="btn btn-primary"
+                {% if is_running or not any_selectable %}disabled{% endif %}>
+          Scan
+        </button>
+
+        <form method="post"
+              action="/scan/stop"
+              hx-post="/scan/stop"
+              hx-target="#scan-panel"
+              hx-swap="outerHTML"
+              class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+          <button type="submit"
+                  class="btn btn-danger"
+                  {% if not is_running %}disabled{% endif %}>
+            Stop
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if is_running %}
+      <div class="scan-progress-box" aria-live="polite">
+        <div class="scan-progress-metrics">
+          <div>
+            <span class="muted">Current site:</span>
+            <strong dir="auto">{{ scan_state.current_site or "—" }}</strong>
+            <span class="num muted">({{ scan_state.current_site_index }}/{{ scan_state.total_sites }})</span>
+          </div>
+          <div>
+            <span class="muted">Query:</span>
+            <strong class="num">{{ scan_state.query_index }}/{{ scan_state.queries_total }}</strong>
+            {% if scan_state.current_query %}
+              <span class="muted" dir="auto">&middot; {{ scan_state.current_query }}</span>
+            {% endif %}
+          </div>
+          <div>
+            <span class="muted">Pages fetched:</span>
+            <strong class="num">{{ scan_state.pages_fetched }}</strong>
+          </div>
+          <div>
+            <span class="muted">Jobs found so far:</span>
+            <strong class="num">{{ scan_state.jobs_found_so_far }}</strong>
+          </div>
+        </div>
+      </div>
+    {% elif scan_state.state in ("completed", "stopped", "failed") and (scan_state.site_results or scan_state.error) %}
+      <div class="scan-summary-box">
+        {% if scan_state.dry_run %}
+          <div class="scan-alert scan-alert-info">
+            <strong>Dry run preview</strong> &mdash; nothing was saved to the database.
+          </div>
+        {% endif %}
+        {% if scan_state.error %}
+          <div class="scan-alert scan-alert-error" dir="auto">{{ scan_state.error }}</div>
+        {% endif %}
+
+        {% if scan_state.site_results %}
+          <div class="table-wrap">
+            <table class="runs-table scan-summary-table">
+              <thead>
+                <tr>
+                  <th>Site</th>
+                  <th>Status</th>
+                  <th>Pages</th>
+                  <th>New</th>
+                  <th>Shortlisted</th>
+                  <th>Skipped</th>
+                  <th>Errors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for sr in scan_state.site_results %}
+                  <tr>
+                    <td><strong dir="auto">{{ sr.site }}</strong></td>
+                    <td>
+                      <span class="site-run-status status-run-{{ sr.status }}">{{ sr.status }}</span>
+                      {% if sr.abort_reason %}
+                        <div class="muted" dir="auto">{{ sr.abort_reason }}</div>
+                      {% endif %}
+                    </td>
+                    <td class="num">{{ sr.pages_fetched }}</td>
+                    <td class="num">{{ sr.new_count }}</td>
+                    <td class="num">{{ sr.shortlisted_count }}</td>
+                    <td class="num">{{ sr.skipped_count }}</td>
+                    <td class="num">
+                      {{ (sr.errors or []) | length }}
+                      {% if sr.errors and not sr.abort_reason %}
+                        <div class="muted" dir="auto">{{ sr.errors[0] }}</div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% for sr in scan_state.site_results %}
+            {% if sr.new_jobs %}
+              <div class="scan-new-jobs-block">
+                <div class="muted" style="margin-bottom: 0.3rem;">
+                  {% if scan_state.dry_run %}
+                    Previewed jobs on <strong>{{ sr.site }}</strong> ({{ sr.new_jobs | length }}):
+                  {% else %}
+                    New jobs saved from <strong>{{ sr.site }}</strong> ({{ sr.new_count }}):
+                  {% endif %}
+                </div>
+                <ul class="scan-new-jobs-list">
+                  {% for nj in sr.new_jobs %}
+                    <li>
+                      {% if nj.score is not none %}
+                        <span class="score-pill score-{{ score_tier(nj.score, threshold) }}">{{ nj.score }}</span>
+                      {% endif %}
+                      <span class="status-badge status-{{ status_slug(nj.status) }}" style="padding: 0.1rem 0.35rem; font-size: 0.74rem;">
+                        {{ nj.status }}
+                      </span>
+                      {% if not scan_state.dry_run and nj.id %}
+                        <a href="/jobs/{{ nj.id }}" dir="auto">{{ nj.title }}</a>
+                      {% else %}
+                        {% set ext_url = safe_external_url(nj.url) %}
+                        {% if ext_url %}
+                          <a href="{{ ext_url }}" target="_blank" rel="noopener noreferrer" dir="auto">{{ nj.title }}</a>
+                        {% else %}
+                          <span dir="auto">{{ nj.title }}</span>
+                        {% endif %}
+                      {% endif %}
+                      {% if nj.company %}
+                        <span class="muted" dir="auto">&middot; {{ nj.company }}</span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+          {% endfor %}
+
+          {% if not scan_state.dry_run %}
+            <div class="scan-summary-footer">
+              <a href="/" class="btn btn-sm">Refresh job table</a>
+              <a href="/?new_only=1" class="btn btn-sm">Filter NEW since last scan</a>
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>

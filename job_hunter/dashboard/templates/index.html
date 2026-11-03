@@ -16,6 +16,7 @@
 {%- endmacro %}
 
 {% block content %}
+  {% include "_scan_panel.html" %}
   {% include "_status_counters.html" %}
 
   <details class="panel" {% if runs %}open{% endif %}>
@@ -133,6 +134,14 @@
                  name="date_to"
                  value="{{ params.date_to.isoformat() if params.date_to else '' }}">
         </div>
+
+        <label class="checkbox-inline" style="padding-bottom: 0.35rem;">
+          <input type="checkbox"
+                 name="new_only"
+                 value="1"
+                 {% if params.new_only %}checked{% endif %}>
+          <span>NEW since last scan</span>
+        </label>
 
         <div class="filter-actions">
           <button type="submit" class="btn btn-primary">Filter</button>

@@ -11,6 +11,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -43,6 +44,7 @@ from job_hunter.scrapers.http import (
     BlockedError,
     HttpSettings,
     PoliteHttpClient,
+    ScanStoppedError,
     ScraperError,
 )
 from job_hunter.scrapers.registry import get_scraper
@@ -60,6 +62,17 @@ class PreviewItem:
     posting: JobPosting
     evaluation: Evaluation | None
     duplicate_of_id: int | None = None
+    job_id: int | None = None
+
+
+@dataclass(frozen=True)
+class SiteProgress:
+    site: str
+    query_index: int
+    queries_total: int
+    current_query: str | None
+    pages_fetched: int
+    jobs_found: int
 
 
 @dataclass
@@ -77,6 +90,8 @@ class ScrapeSummary:
     skipped_count: int = 0
     below_threshold_count: int = 0
     aborted: bool = False
+    blocked: bool = False
+    stopped: bool = False
     abort_reason: str | None = None
     errors: list[str] = field(default_factory=list)
     previews: list[PreviewItem] = field(default_factory=list)
@@ -115,10 +130,17 @@ def _load_cvs_readonly(session: Session, cfg: AppConfig, matcher: SkillMatcher) 
     return records
 
 
-def _build_http_settings(site: str, site_cfg: dict[str, Any]) -> HttpSettings:
+def _build_http_settings(
+    site: str,
+    site_cfg: dict[str, Any],
+    scraper_cls: type[BaseScraper] | None = None,
+) -> HttpSettings:
+    if scraper_cls is not None and hasattr(scraper_cls, "build_http_settings"):
+        return scraper_cls.build_http_settings(site_cfg)  # type: ignore[no-any-return]
     if site == "alljobs":
         return build_alljobs_http_settings(site_cfg)
-    origin = str(site_cfg.get("origin") or "")
+    default_origin = getattr(scraper_cls, "origin", "") if scraper_cls is not None else ""
+    origin = str(site_cfg.get("origin") or default_origin or "")
     if not origin:
         raise ValueError(f"Site '{site}' must specify 'origin' for HTTP settings")
     return HttpSettings(
@@ -130,6 +152,30 @@ def _build_http_settings(site: str, site_cfg: dict[str, Any]) -> HttpSettings:
         max_retries=int(site_cfg.get("max_retries", 2)),
         deny_path_prefixes=GLOBAL_HARD_DENY_PATH_PREFIXES,
     )
+
+
+def _instantiate_scraper(
+    scraper_cls: type[BaseScraper],
+    site_cfg: dict[str, Any],
+    *,
+    http_client: PoliteHttpClient | None,
+    now_fn: Callable[[], datetime],
+    sleep_fn: Callable[[float], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> BaseScraper:
+    sig = inspect.signature(scraper_cls.__init__)
+    params = sig.parameters
+    has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+    kwargs: dict[str, Any] = {}
+    if http_client is not None and ("http_client" in params or has_varkw):
+        kwargs["http_client"] = http_client
+    if "now_fn" in params or has_varkw:
+        kwargs["now_fn"] = now_fn
+    if sleep_fn is not None and ("sleep_fn" in params or has_varkw):
+        kwargs["sleep_fn"] = sleep_fn
+    if should_stop is not None and ("should_stop" in params or has_varkw):
+        kwargs["should_stop"] = should_stop
+    return scraper_cls(site_cfg, **kwargs)
 
 
 def check_page_budget(site: str, queries: Sequence[str], site_cfg: dict[str, Any]) -> str | None:
@@ -195,7 +241,7 @@ def _evaluate_or_persist(
                     summary.shortlisted_count += 1
                 else:
                     summary.below_threshold_count += 1
-                summary.previews.append(PreviewItem(posting=posting, evaluation=ev))
+                summary.previews.append(PreviewItem(posting=posting, evaluation=ev, job_id=job.id))
         except Exception as exc:  # noqa: BLE001 - isolate bad posting without aborting run
             msg = f"{posting.source}:{posting.source_job_id or '-'} {exc.__class__.__name__}: {exc}"
             summary.errors.append(msg)
@@ -215,6 +261,8 @@ def scrape_site(
     transport: httpx.BaseTransport | None = None,
     sleep_fn: Callable[[float], None] | None = None,
     now: datetime | None = None,
+    on_progress: Callable[[SiteProgress], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> ScrapeSummary:
     """Execute a full scrape run for `site` (or preview in memory when `dry_run=True`)."""
     scraper_cls: type[BaseScraper] = get_scraper(site)
@@ -233,44 +281,162 @@ def scrape_site(
     summary = ScrapeSummary(site=site, dry_run=dry_run, queries_planned=len(active_queries))
 
     budget_warning = check_page_budget(site, active_queries, raw_site_cfg)
-    http_settings = _build_http_settings(site, raw_site_cfg)
+
+    cv_records: list[CVRecord] = []
+    if not dry_run:
+        with session_scope(factory) as s:
+            cv_records = sync_cvs(s, cfg, matcher)
+            run = Run(site=site, started_at=ref_now, errors=[])
+            s.add(run)
+            s.flush()
+            summary.run_id = run.id
+            log_event(
+                s,
+                "run_started",
+                f"run {run.id} site={site} queries_planned={summary.queries_planned}",
+            )
+            if budget_warning:
+                log_event(s, "page_budget_warning", budget_warning)
 
     buffered_events: list[tuple[str, str]] = []
 
     def _record_http_event(action: str, result: str) -> None:
         buffered_events.append((action, result))
 
-    raw_httpx = httpx.Client(
-        timeout=http_settings.timeout_seconds,
-        follow_redirects=False,
-        transport=transport,
-    )
-    http_kwargs: dict[str, Any] = {"client": raw_httpx, "on_event": _record_http_event}
-    if sleep_fn is not None:
-        http_kwargs["sleep_fn"] = sleep_fn
-
     postings: list[JobPosting] = []
     seen_keys: set[str] = set()
+    current_q_text: str | None = None
+
+    def _emit_progress(pages: int) -> None:
+        if on_progress is not None:
+            on_progress(
+                SiteProgress(
+                    site=site,
+                    query_index=summary.queries_run,
+                    queries_total=summary.queries_planned,
+                    current_query=current_q_text,
+                    pages_fetched=pages,
+                    jobs_found=len(postings),
+                )
+            )
+
+    def _check_stop() -> None:
+        if should_stop is not None and should_stop():
+            raise ScanStoppedError("Stopped by user")
 
     try:
-        with PoliteHttpClient(http_settings, **http_kwargs) as polite:
-            scraper = scraper_cls(raw_site_cfg, http_client=polite, now_fn=lambda: ref_now)  # type: ignore[call-arg]
+        if getattr(scraper_cls, "requires_http", True):
+            http_settings = _build_http_settings(site, raw_site_cfg, scraper_cls)
+            effective_transport = transport if transport is not None else scraper_cls.build_transport(raw_site_cfg)
+            raw_httpx = httpx.Client(
+                timeout=http_settings.timeout_seconds,
+                follow_redirects=False,
+                transport=effective_transport,
+            )
+            http_kwargs: dict[str, Any] = {
+                "client": raw_httpx,
+                "on_event": _record_http_event,
+                "should_stop": should_stop,
+                "on_page_fetched": _emit_progress,
+            }
+            if sleep_fn is not None:
+                http_kwargs["sleep_fn"] = sleep_fn
+
             try:
-                polite.ensure_robots()
+                with PoliteHttpClient(http_settings, **http_kwargs) as polite:
+                    scraper = _instantiate_scraper(
+                        scraper_cls,
+                        raw_site_cfg,
+                        http_client=polite,
+                        now_fn=lambda: ref_now,
+                        sleep_fn=sleep_fn,
+                        should_stop=should_stop,
+                    )
+                    try:
+                        _emit_progress(0)
+                        polite.ensure_robots()
+                        for q in active_queries:
+                            _check_stop()
+                            if polite.pages_fetched >= http_settings.max_pages_per_run:
+                                break
+                            summary.queries_run += 1
+                            current_q_text = q
+                            _emit_progress(polite.pages_fetched)
+                            buffered_events.append(("search_query", f"{site}: query={q!r}"))
+                            try:
+                                cards = scraper.search(q)
+                            except (BlockedError, RobotsDisallowedError, RobotsUnavailableError, ScanStoppedError):
+                                raise
+                            except ScraperError as exc:
+                                msg = f"query {q!r}: {exc}"
+                                summary.errors.append(msg)
+                                buffered_events.append(("scrape_error", msg))
+                                log.warning("query %r failed: %s", q, exc)
+                                continue
+
+                            for raw in cards:
+                                dedup_key = raw.source_job_id or (normalize_url(raw.url) or raw.url)
+                                if dedup_key in seen_keys:
+                                    continue
+                                seen_keys.add(dedup_key)
+                                detail = scraper.fetch_detail(raw.url)
+                                postings.append(to_posting(raw, detail))
+                            _emit_progress(polite.pages_fetched)
+                    except RobotsUnavailableError as exc:
+                        summary.aborted = True
+                        summary.blocked = True
+                        summary.abort_reason = str(exc)
+                        summary.errors.append(str(exc))
+                        buffered_events.append(("robots_error", str(exc)))
+                        log.error("robots.txt unavailable for %s: %s", site, exc)
+                    except (BlockedError, RobotsDisallowedError) as exc:
+                        summary.aborted = True
+                        summary.blocked = True
+                        summary.abort_reason = str(exc)
+                        summary.errors.append(str(exc))
+                        action_name = "robots_denied" if isinstance(exc, RobotsDisallowedError) else "scrape_blocked"
+                        if not any(a == action_name and r == str(exc) for a, r in buffered_events):
+                            buffered_events.append((action_name, str(exc)))
+                        log.error("scrape stopped for %s: %s", site, exc)
+                    except ScanStoppedError as exc:
+                        summary.stopped = True
+                        summary.abort_reason = str(exc)
+                        summary.errors.append(str(exc))
+                        buffered_events.append(("scan_stopped", f"{site}: {exc}"))
+                        log.info("scrape stopped by user for %s", site)
+                    finally:
+                        summary.pages_fetched = polite.pages_fetched
+            finally:
+                raw_httpx.close()
+        else:
+            max_pages = int(raw_site_cfg.get("max_pages_per_run", 40))
+            scraper = _instantiate_scraper(
+                scraper_cls,
+                raw_site_cfg,
+                http_client=None,
+                now_fn=lambda: ref_now,
+                sleep_fn=sleep_fn,
+                should_stop=should_stop,
+            )
+            try:
+                _emit_progress(0)
                 for q in active_queries:
-                    if polite.pages_fetched >= http_settings.max_pages_per_run:
+                    _check_stop()
+                    pages_now = int(getattr(scraper, "pages_fetched", summary.pages_fetched))
+                    if pages_now >= max_pages:
                         break
                     summary.queries_run += 1
+                    current_q_text = q
+                    _emit_progress(pages_now)
                     buffered_events.append(("search_query", f"{site}: query={q!r}"))
                     try:
                         cards = scraper.search(q)
-                    except (BlockedError, RobotsDisallowedError, RobotsUnavailableError):
+                    except (BlockedError, RobotsDisallowedError, RobotsUnavailableError, ScanStoppedError):
                         raise
                     except ScraperError as exc:
                         msg = f"query {q!r}: {exc}"
                         summary.errors.append(msg)
                         buffered_events.append(("scrape_error", msg))
-                        log.warning("query %r failed: %s", q, exc)
                         continue
 
                     for raw in cards:
@@ -280,66 +446,79 @@ def scrape_site(
                         seen_keys.add(dedup_key)
                         detail = scraper.fetch_detail(raw.url)
                         postings.append(to_posting(raw, detail))
+                    summary.pages_fetched = int(getattr(scraper, "pages_fetched", summary.queries_run))
+                    _emit_progress(summary.pages_fetched)
             except RobotsUnavailableError as exc:
                 summary.aborted = True
+                summary.blocked = True
                 summary.abort_reason = str(exc)
                 summary.errors.append(str(exc))
                 buffered_events.append(("robots_error", str(exc)))
-                log.error("robots.txt unavailable for %s: %s", site, exc)
             except (BlockedError, RobotsDisallowedError) as exc:
                 summary.aborted = True
+                summary.blocked = True
                 summary.abort_reason = str(exc)
                 summary.errors.append(str(exc))
-                log.error("scrape stopped for %s: %s", site, exc)
+                action_name = "robots_denied" if isinstance(exc, RobotsDisallowedError) else "scrape_blocked"
+                buffered_events.append((action_name, str(exc)))
+            except ScanStoppedError as exc:
+                summary.stopped = True
+                summary.abort_reason = str(exc)
+                summary.errors.append(str(exc))
+                buffered_events.append(("scan_stopped", f"{site}: {exc}"))
+
+        summary.unique_postings = len(postings)
+
+        if dry_run:
+            s = factory()
+            try:
+                evaluator = Evaluator(cfg, _load_cvs_readonly(s, cfg, matcher), matcher)
+                if not summary.stopped:
+                    _evaluate_or_persist(s, evaluator, postings, summary, now=ref_now)
+                s.rollback()
             finally:
-                summary.pages_fetched = polite.pages_fetched
-    finally:
-        raw_httpx.close()
+                s.close()
+            return summary
 
-    summary.unique_postings = len(postings)
+        with session_scope(factory) as s:
+            evaluator = Evaluator(cfg, cv_records, matcher)
+            run_row = s.get(Run, summary.run_id) if summary.run_id is not None else None
+            if run_row is None:
+                run_row = Run(site=site, started_at=ref_now, errors=[])
+                s.add(run_row)
+                s.flush()
+                summary.run_id = run_row.id
+            for action, result in buffered_events:
+                log_event(s, action, result)
 
-    if dry_run:
-        s = factory()
-        try:
-            evaluator = Evaluator(cfg, _load_cvs_readonly(s, cfg, matcher), matcher)
-            _evaluate_or_persist(s, evaluator, postings, summary, now=ref_now)
-            s.rollback()
-        finally:
-            s.close()
+            if not summary.stopped:
+                _evaluate_or_persist(s, evaluator, postings, summary, now=ref_now)
+
+            run_row.new_count = summary.new_count
+            run_row.skipped_count = summary.skipped_count
+            run_row.shortlisted_count = summary.shortlisted_count
+            run_row.errors = list(summary.errors)
+            run_row.finished_at = utcnow()
+            log_event(
+                s,
+                "run_finished",
+                f"run {run_row.id}: pages={summary.pages_fetched} new={run_row.new_count} "
+                f"skipped={run_row.skipped_count} shortlisted={run_row.shortlisted_count} "
+                f"aborted={summary.aborted} stopped={summary.stopped} errors={len(summary.errors)}",
+            )
         return summary
-
-    with session_scope(factory) as s:
-        evaluator = Evaluator(cfg, sync_cvs(s, cfg, matcher), matcher)
-        run = Run(site=site, started_at=ref_now, errors=[])
-        s.add(run)
-        s.flush()
-        summary.run_id = run.id
-        log_event(
-            s,
-            "run_started",
-            f"run {run.id} site={site} queries={summary.queries_run}/{summary.queries_planned} "
-            f"pages={summary.pages_fetched}",
-        )
-        if budget_warning:
-            log_event(s, "page_budget_warning", budget_warning)
-        for action, result in buffered_events:
-            log_event(s, action, result)
-
-        _evaluate_or_persist(s, evaluator, postings, summary, now=ref_now)
-
-        run.new_count = summary.new_count
-        run.skipped_count = summary.skipped_count
-        run.shortlisted_count = summary.shortlisted_count
-        run.errors = list(summary.errors)
-        run.finished_at = utcnow()
-        log_event(
-            s,
-            "run_finished",
-            f"run {run.id}: pages={summary.pages_fetched} new={run.new_count} "
-            f"skipped={run.skipped_count} shortlisted={run.shortlisted_count} "
-            f"aborted={summary.aborted} errors={len(summary.errors)}",
-        )
-    return summary
+    except BaseException as exc:
+        if not dry_run and summary.run_id is not None:
+            try:
+                with session_scope(factory) as s:
+                    run_row = s.get(Run, summary.run_id)
+                    if run_row is not None and run_row.finished_at is None:
+                        run_row.errors = [*list(run_row.errors or []), f"{exc.__class__.__name__}: {exc}"]
+                        run_row.finished_at = utcnow()
+                        log_event(s, "run_failed", f"run {run_row.id} ({site}): {exc.__class__.__name__}: {exc}")
+            except Exception:  # noqa: BLE001 - best-effort cleanup before re-raising
+                pass
+        raise
 
 
 def import_html_file(

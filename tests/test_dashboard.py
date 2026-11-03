@@ -210,8 +210,18 @@ def test_sorting_and_pagination(seeded_dashboard):
 # --------------------------------------------------------------------------- Mutations, Events & Rescore Rule
 
 
+def _fetch_csrf_token(client: TestClient) -> str:
+    resp = client.get("/")
+    assert resp.status_code == 200
+    soup = BeautifulSoup(resp.text, "html.parser")
+    inp = soup.find("input", attrs={"name": "csrf_token"})
+    assert inp is not None and inp.get("value")
+    return str(inp["value"])
+
+
 def test_status_cv_notes_mutations_and_event_logging(seeded_dashboard):
     client, factory, cfg, matcher = seeded_dashboard
+    csrf = _fetch_csrf_token(client)
 
     with factory() as s:
         job = s.scalars(select(Job).where(Job.source_job_id == "s01")).one()
@@ -221,7 +231,7 @@ def test_status_cv_notes_mutations_and_event_logging(seeded_dashboard):
     # 1. HTMX inline status change -> Applied
     r_st = client.post(
         f"/jobs/{job_id}/status",
-        data={"status": "Applied", "context": "row", "next_url": "/"},
+        data={"status": "Applied", "context": "row", "next_url": "/", "csrf_token": csrf},
         headers={"HX-Request": "true", "Origin": "http://127.0.0.1:8000"},
     )
     assert r_st.status_code == 200
@@ -232,14 +242,14 @@ def test_status_cv_notes_mutations_and_event_logging(seeded_dashboard):
     # Submitting identical status again does not duplicate event
     client.post(
         f"/jobs/{job_id}/status",
-        data={"status": "Applied", "context": "row"},
+        data={"status": "Applied", "context": "row", "csrf_token": csrf},
         headers={"HX-Request": "true"},
     )
 
     # 2. CV change -> embedded_cv
     r_cv = client.post(
         f"/jobs/{job_id}/cv",
-        data={"cv_id": "embedded_cv", "context": "row"},
+        data={"cv_id": "embedded_cv", "context": "row", "csrf_token": csrf},
         headers={"HX-Request": "true"},
     )
     assert r_cv.status_code == 200
@@ -250,7 +260,7 @@ def test_status_cv_notes_mutations_and_event_logging(seeded_dashboard):
     # 3. Notes change (standard non-HTMX form post -> 303 redirect)
     r_notes = client.post(
         f"/jobs/{job_id}/notes",
-        data={"notes": "הגשתי מועמדות דרך האתר", "next_url": f"/jobs/{job_id}"},
+        data={"notes": "הגשתי מועמדות דרך האתר", "next_url": f"/jobs/{job_id}", "csrf_token": csrf},
         follow_redirects=False,
     )
     assert r_notes.status_code == 303
@@ -283,14 +293,19 @@ def test_status_cv_notes_mutations_and_event_logging(seeded_dashboard):
 
 def test_invalid_status_or_cv_and_missing_job_errors(seeded_dashboard):
     client, factory, _, _ = seeded_dashboard
+    csrf = _fetch_csrf_token(client)
     with factory() as s:
         job_id = s.scalars(select(Job).limit(1)).one().id
 
-    assert client.post(f"/jobs/{job_id}/status", data={"status": "NotAValidStatus"}).status_code == 422
-    assert client.post(f"/jobs/{job_id}/cv", data={"cv_id": "nonexistent_cv"}).status_code == 422
-    assert client.post("/jobs/999999/status", data={"status": "Applied"}).status_code == 404
-    assert client.post("/jobs/999999/cv", data={"cv_id": ""}).status_code == 404
-    assert client.post("/jobs/999999/notes", data={"notes": "hi"}).status_code == 404
+    r_bad_status = client.post(
+        f"/jobs/{job_id}/status",
+        data={"status": "NotAValidStatus", "csrf_token": csrf},
+    )
+    assert r_bad_status.status_code == 422
+    assert client.post(f"/jobs/{job_id}/cv", data={"cv_id": "nonexistent_cv", "csrf_token": csrf}).status_code == 422
+    assert client.post("/jobs/999999/status", data={"status": "Applied", "csrf_token": csrf}).status_code == 404
+    assert client.post("/jobs/999999/cv", data={"cv_id": "", "csrf_token": csrf}).status_code == 404
+    assert client.post("/jobs/999999/notes", data={"notes": "hi", "csrf_token": csrf}).status_code == 404
 
 
 # --------------------------------------------------------------------------- Detail Page & Explain
@@ -452,10 +467,18 @@ def test_localhost_host_and_origin_enforcement(seeded_dashboard):
     with factory() as s:
         assert s.get(Job, job_id).status == initial_status
 
-    # Valid localhost Origin & Host succeed
+    # Missing or forged CSRF token rejected on POST
+    csrf = _fetch_csrf_token(client)
+    assert client.post(f"/jobs/{job_id}/status", data={"status": "Interview"}).status_code == 403
+    assert client.post(
+        f"/jobs/{job_id}/status",
+        data={"status": "Interview", "csrf_token": "forged-token-value"},
+    ).status_code == 403
+
+    # Valid localhost Origin, Host & CSRF token succeed
     ok = client.post(
         f"/jobs/{job_id}/status",
-        data={"status": "Interview", "next_url": "//evil.example/open-redirect"},
+        data={"status": "Interview", "next_url": "//evil.example/open-redirect", "csrf_token": csrf},
         headers={"Host": "localhost:8000", "Origin": "http://localhost:8000"},
         follow_redirects=False,
     )

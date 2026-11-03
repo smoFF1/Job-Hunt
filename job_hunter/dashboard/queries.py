@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -65,6 +66,7 @@ class JobFilterParams:
     date_from: date | None = None
     date_to: date | None = None
     q: str = ""
+    new_only: bool = False
     sort: str = DEFAULT_SORT
     order: str = DEFAULT_ORDER
     page: int = 1
@@ -92,6 +94,8 @@ class JobFilterParams:
             data["date_to"] = self.date_to.isoformat()
         if self.q:
             data["q"] = self.q
+        if self.new_only:
+            data["new_only"] = "1"
         if include_sort:
             if self.sort != DEFAULT_SORT or self.order != DEFAULT_ORDER:
                 data["sort"] = self.sort
@@ -103,8 +107,10 @@ class JobFilterParams:
                 data["per_page"] = str(self.per_page)
         if overrides:
             for k, v in overrides.items():
-                if v is None or v == "":
+                if v is None or v == "" or v is False:
                     data.pop(k, None)
+                elif v is True:
+                    data[k] = "1"
                 else:
                     data[k] = str(v)
         return {k: str(v) for k, v in data.items()}
@@ -157,6 +163,7 @@ def parse_filter_params(
     date_from: str | None = None,
     date_to: str | None = None,
     q: str | None = None,
+    new_only: str | None = None,
     sort: str | None = None,
     order: str | None = None,
     page: str | None = None,
@@ -165,6 +172,7 @@ def parse_filter_params(
     clean_status = (status or "").strip()
     clean_platform = (platform or "").strip()
     clean_q = (q or "").strip()
+    clean_new_only = (new_only or "").strip().lower() in ("1", "true", "yes", "on")
 
     clean_sort = (sort or "").strip().lower()
     if clean_sort not in SORT_KEYS:
@@ -191,6 +199,7 @@ def parse_filter_params(
         date_from=_parse_date(date_from),
         date_to=_parse_date(date_to),
         q=clean_q,
+        new_only=clean_new_only,
         sort=clean_sort,
         order=clean_order,
         page=clean_page,
@@ -202,10 +211,71 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def build_jobs_query(params: JobFilterParams) -> Select[tuple[Job]]:
+_SCAN_START_RE = re.compile(r"\bstart=(\S+)")
+
+
+def get_new_since_cutoff(session: Session) -> datetime | None:
+    """Return the start timestamp of the latest non-seed scan/run that found >= 1 new job.
+
+    - Scans that found 0 new jobs (`Run.new_count == 0`) do NOT advance the cutoff, so badges survive.
+    - Dry runs write nothing to the DB, so they never change the cutoff.
+    - For multi-site `scan` invocations, uses the enclosing scan's `start=` timestamp recorded in
+      `scan_site_done` so new jobs from every site in that scan receive the NEW badge.
+    """
+    latest_run = session.scalars(
+        select(Run)
+        .where(Run.site != "seed", Run.new_count > 0)
+        .order_by(Run.started_at.desc(), Run.id.desc())
+        .limit(1)
+    ).first()
+    if latest_run is None:
+        return None
+
+    marker = f"run_id={latest_run.id} "
+    ev = session.scalars(
+        select(Event)
+        .where(Event.action == "scan_site_done", Event.result.contains(marker))
+        .order_by(Event.id.desc())
+        .limit(1)
+    ).first()
+    if ev is not None and ev.result:
+        m = _SCAN_START_RE.search(ev.result)
+        if m:
+            try:
+                return datetime.fromisoformat(m.group(1)).replace(tzinfo=None)
+            except ValueError:
+                pass
+
+    return latest_run.started_at
+
+
+def is_job_new(job: Job, cutoff: datetime | None) -> bool:
+    """Return True iff `job` was first discovered in or after `cutoff` (excluding synthetic `seed`)."""
+    if cutoff is None or job.source == "seed" or job.first_seen_at is None:
+        return False
+    return job.first_seen_at >= cutoff
+
+
+def get_new_jobs_count(session: Session, cutoff: datetime | None) -> int:
+    if cutoff is None:
+        return 0
+    stmt = select(func.count()).select_from(Job).where(Job.source != "seed", Job.first_seen_at >= cutoff)
+    return int(session.scalar(stmt) or 0)
+
+
+def build_jobs_query(
+    params: JobFilterParams,
+    *,
+    new_since_cutoff: datetime | None = None,
+) -> Select[tuple[Job]]:
     """Build a filtered and sorted SQLAlchemy Select for `Job` (unpaginated)."""
     stmt = select(Job)
 
+    if params.new_only:
+        if new_since_cutoff is None:
+            stmt = stmt.where(Job.id == -1)
+        else:
+            stmt = stmt.where(Job.source != "seed", Job.first_seen_at >= new_since_cutoff)
     if params.status:
         stmt = stmt.where(Job.status == params.status)
     if params.platform:
@@ -254,9 +324,15 @@ def build_jobs_query(params: JobFilterParams) -> Select[tuple[Job]]:
     return stmt
 
 
-def query_jobs_page(session: Session, params: JobFilterParams) -> tuple[list[Job], int, int]:
+def query_jobs_page(
+    session: Session,
+    params: JobFilterParams,
+    *,
+    new_since_cutoff: datetime | None = None,
+) -> tuple[list[Job], int, int]:
     """Return `(jobs_on_page, total_matching, total_pages)`."""
-    base = build_jobs_query(params)
+    cutoff = get_new_since_cutoff(session) if (new_since_cutoff is None and params.new_only) else new_since_cutoff
+    base = build_jobs_query(params, new_since_cutoff=cutoff)
     count_stmt = select(func.count()).select_from(base.order_by(None).subquery())
     total = int(session.scalar(count_stmt) or 0)
     total_pages = max(1, (total + params.per_page - 1) // params.per_page)
@@ -345,9 +421,15 @@ def get_job_events(session: Session, job_id: int, limit: int = 20) -> list[Event
     return list(session.scalars(stmt).all())
 
 
-def export_jobs_csv(session: Session, params: JobFilterParams) -> str:
+def export_jobs_csv(
+    session: Session,
+    params: JobFilterParams,
+    *,
+    new_since_cutoff: datetime | None = None,
+) -> str:
     """Render all jobs matching `params` (ignoring pagination) as UTF-8 CSV text."""
-    jobs = session.scalars(build_jobs_query(params)).all()
+    cutoff = get_new_since_cutoff(session) if (new_since_cutoff is None and params.new_only) else new_since_cutoff
+    jobs = session.scalars(build_jobs_query(params, new_since_cutoff=cutoff)).all()
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(CSV_COLUMNS)

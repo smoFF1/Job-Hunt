@@ -4,7 +4,7 @@ Personal tool: scans Israeli job boards, filters/ranks entry-level software jobs
 and (later) pre-fills applications in a visible browser. **The human always submits.**
 See [docs/SPEC.md](docs/SPEC.md) and [AGENTS.md](AGENTS.md).
 
-**Status:** Phase 3 (Dashboard) — config, DB, CV loader, filter/scoring engine, AllJobs guest search scraper + offline HTML import, local FastAPI/Jinja2/htmx dashboard (`127.0.0.1` only), CLI, seed data.
+**Status:** Phase 4 (On-Demand Scan) — config, SQLite DB (WAL mode), CV loader, filter/scoring engine, AllJobs guest search scraper + offline HTML import, local FastAPI/Jinja2/htmx dashboard (`127.0.0.1` only) with on-demand multi-site scan, live htmx progress, stop button, single-scan lock, and per-site cooldown / block lockout. Nothing ever runs automatically.
 
 ## Setup
 
@@ -26,6 +26,9 @@ python -m job_hunter load-cvs                # sync cvs.yaml -> DB, show extract
 python -m job_hunter seed                    # 30 fake jobs (idempotent)
 python -m job_hunter scrape alljobs --dry-run
 python -m job_hunter scrape alljobs
+python -m job_hunter scan --sites alljobs --dry-run
+python -m job_hunter scan --sites alljobs --query "Junior Python"
+python -m job_hunter scan --sites alljobs    # multi-site sequential scan with lock & cooldown
 python -m job_hunter import-html alljobs path\to\search_page.html --dry-run
 python -m job_hunter process                 # filter + score unprocessed jobs
 python -m job_hunter rescore                 # after config changes (New/Skipped/Shortlisted only)
@@ -43,7 +46,7 @@ Global options: `--db PATH`, `--config-dir DIR`, `-v`.
 |---|---|
 | `config/profile.yaml` | Candidate details (gitignored). Template: `profile.example.yaml` |
 | `config/cvs.yaml` | CV registry: id, file, label, tags, default (gitignored). Template: `cvs.example.yaml` |
-| `config/search.yaml` | Thresholds, skip/boost keywords (EN+HE), categories, scoring points, sites |
+| `config/search.yaml` | Thresholds, skip/boost keywords (EN+HE), categories, scoring points, sites (`enabled`, `min_minutes_between_scans`, `min_minutes_after_block`) |
 | `config/skills.yaml` | Skills vocabulary: canonical name + aliases |
 
 ## Tests

@@ -32,13 +32,16 @@ def get_engine(db_path: str | Path | None = None) -> Engine:
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(
         f"sqlite:///{path.as_posix()}",
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30.0},
         future=True,
     )
 
     @event.listens_for(engine, "connect")
     def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - trivial
         cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("PRAGMA foreign_keys=ON")
         cur.close()
 

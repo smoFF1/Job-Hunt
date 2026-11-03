@@ -10,8 +10,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from job_hunter.core.pipeline import JobPosting
+
+if TYPE_CHECKING:
+    import httpx
 
 
 @dataclass
@@ -53,9 +57,16 @@ def to_posting(raw: RawJob, detail: JobDetail | None = None) -> JobPosting:
 
 class BaseScraper(ABC):
     name: str = ""
+    origin: str = ""
+    requires_http: bool = True
 
     def __init__(self, site_config: dict | None = None):
         self.site_config = site_config or {}
+
+    @classmethod
+    def build_transport(cls, site_config: dict | None = None) -> httpx.BaseTransport | None:
+        """Optional hook for offline/mock scrapers in tests (default None = standard HTTP)."""
+        return None
 
     @abstractmethod
     def search(self, query: str) -> list[RawJob]:

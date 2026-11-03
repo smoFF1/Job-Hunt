@@ -22,6 +22,8 @@ def test_load_repo_search_and_skills(cfg):
     assert s.sites["alljobs"]["include_vip"] is False
     assert s.sites["alljobs"]["max_pages_per_query"] == 2
     assert s.sites["alljobs"]["max_pages_per_run"] == 40
+    assert s.sites["alljobs"]["min_minutes_between_scans"] == 30
+    assert s.sites["alljobs"]["min_minutes_after_block"] == 240
     assert "Software Engineer" in s.roles
     assert "Software Engineer (Defense/Security)" not in s.roles
     for expected_q in ("Junior Developer", "מפתח תוכנה", "ג'וניור מפתח", "בוגרי מדעי המחשב"):
@@ -141,6 +143,22 @@ def test_site_without_enabled_flag_is_an_error(tmp_path):
     d = write_config(tmp_path / "config", search_overrides={"sites": {"alljobs": {"pages": 2}}})
     with pytest.raises(ConfigError, match="enabled"):
         load_config(d, tmp_path)
+
+
+def test_negative_cooldown_or_block_lockout_is_an_error(tmp_path):
+    d1 = write_config(
+        tmp_path / "c1",
+        search_overrides={"sites": {"alljobs": {"enabled": True, "min_minutes_between_scans": -5}}},
+    )
+    with pytest.raises(ConfigError, match="min_minutes_between_scans"):
+        load_config(d1, tmp_path)
+
+    d2 = write_config(
+        tmp_path / "c2",
+        search_overrides={"sites": {"alljobs": {"enabled": True, "min_minutes_after_block": -1}}},
+    )
+    with pytest.raises(ConfigError, match="min_minutes_after_block"):
+        load_config(d2, tmp_path)
 
 
 def test_invalid_yaml(tmp_path):

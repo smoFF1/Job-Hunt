@@ -19,8 +19,14 @@ from job_hunter.core.db import get_engine, init_db, log_event, make_session_fact
 from job_hunter.core.models import STATUSES, Job, Run
 from job_hunter.core.pipeline import Evaluator, process_pending, rescore, run_postings
 from job_hunter.core.skills import SkillMatcher
-from job_hunter.scrapers.registry import registered_sites
+from job_hunter.scrapers.registry import enabled_sites, registered_sites
 from job_hunter.scrapers.runner import ScrapeSummary, SiteDisabledError, import_html_file, scrape_site
+from job_hunter.scrapers.scan import (
+    ScanAlreadyRunningError,
+    ScanCooldownError,
+    ScanValidationError,
+    run_scan,
+)
 
 log = logging.getLogger("job_hunter")
 
@@ -160,6 +166,38 @@ def cmd_scrape(ctx: Context) -> int:
     return 1 if summary.aborted else 0
 
 
+def cmd_scan(ctx: Context) -> int:
+    a = ctx.args
+    if a.sites is not None:
+        sites = [s.strip() for s in a.sites.split(",") if s.strip()]
+    else:
+        sites = enabled_sites(ctx.cfg.search.sites)
+    db_file = resolve_db_path(a.db)
+    try:
+        res = run_scan(
+            ctx.factory,
+            ctx.cfg,
+            ctx.matcher,
+            db_path=db_file,
+            sites=sites,
+            extra_query=a.query,
+            dry_run=a.dry_run,
+            scan_id=a.scan_id,
+        )
+    except (ScanValidationError, ScanAlreadyRunningError, ScanCooldownError, SiteDisabledError) as exc:
+        _out(f"Scan error: {exc}")
+        return 1
+
+    for sm in res.summaries:
+        _print_scrape_summary("Scan", sm)
+    for site_name, err in res.site_errors.items():
+        _out(f"Scan ({site_name}) ERROR: {err}")
+    if res.stopped:
+        _out("Scan stopped by user.")
+    has_failure = bool(res.stopped or res.site_errors or any(sm.aborted for sm in res.summaries))
+    return 1 if has_failure else 0
+
+
 def cmd_import_html(ctx: Context) -> int:
     a = ctx.args
     try:
@@ -253,7 +291,14 @@ def cmd_dashboard(ctx: Context) -> int:
     if not (1 <= port <= 65535):
         _out(f"Dashboard error: invalid port {port} (must be 1..65535)")
         return 2
-    app = create_app(session_factory=ctx.factory, cfg=ctx.cfg)
+    db_file = resolve_db_path(ctx.args.db)
+    app = create_app(
+        db_path=db_file,
+        session_factory=ctx.factory,
+        cfg=ctx.cfg,
+        config_dir=ctx.cfg.config_dir,
+        root=ctx.cfg.root,
+    )
     _out(f"Dashboard running at http://{DASHBOARD_HOST}:{port} (DB: {ctx.engine.url.database})")
     uvicorn.run(
         app,
@@ -269,6 +314,7 @@ COMMANDS = {
     "load-cvs": (cmd_load_cvs, "Sync config/cvs.yaml into cv_versions and show extracted skills"),
     "seed": (cmd_seed, "Insert and process the 30 fake seed jobs (idempotent)"),
     "scrape": (cmd_scrape, "Scrape an enabled job board and filter/score postings"),
+    "scan": (cmd_scan, "Scan one or more enabled sites sequentially with lock and cooldown"),
     "import-html": (cmd_import_html, "Parse a saved search HTML file offline and feed the pipeline"),
     "process": (cmd_process, "Filter and score jobs that were not processed yet"),
     "rescore": (cmd_rescore, "Re-run filter/score after a config change (New/Skipped/Shortlisted only)"),
@@ -295,6 +341,11 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--dry-run", action="store_true", help="Fetch and evaluate without writing to DB")
             sp.add_argument("--max-pages", type=int, default=None, help="Override max_pages_per_run")
             sp.add_argument("--query", action="append", default=None, help="Override search query (repeatable)")
+        if name == "scan":
+            sp.add_argument("--sites", type=str, default=None, help="Comma-separated enabled sites (e.g. alljobs)")
+            sp.add_argument("--query", type=str, default=None, help="Optional one-off search query")
+            sp.add_argument("--dry-run", action="store_true", help="Preview only; write nothing to DB")
+            sp.add_argument("--scan-id", type=str, default=None, help=argparse.SUPPRESS)
         if name == "import-html":
             sp.add_argument("site", choices=sites, help="Registered site parser (e.g. alljobs)")
             sp.add_argument("file", type=Path, help="Path to locally saved search-results HTML file")

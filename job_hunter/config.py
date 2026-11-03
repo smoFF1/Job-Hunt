@@ -14,6 +14,9 @@ import yaml
 
 from job_hunter import DEFAULT_CONFIG_DIR, PROJECT_ROOT
 
+DEFAULT_COOLDOWN_MINUTES = 30
+DEFAULT_BLOCK_LOCKOUT_MINUTES = 240
+
 
 class ConfigError(Exception):
     """Invalid or missing configuration."""
@@ -264,6 +267,11 @@ def load_search(path: Path) -> SearchConfig:
     for name, site in sites.items():
         if not isinstance(site, dict) or "enabled" not in site:
             raise ConfigError(f"search.yaml: site '{name}' must be a mapping with an 'enabled' flag")
+        for key in ("min_minutes_between_scans", "min_minutes_after_block"):
+            if key in site and site[key] is not None:
+                val = site[key]
+                if isinstance(val, bool) or not isinstance(val, (int, float)) or float(val) < 0:
+                    raise ConfigError(f"search.yaml: sites.{name}.{key} must be a number >= 0")
 
     return SearchConfig(
         experience_cutoff=float(thresholds.get("experience_cutoff", 2)),

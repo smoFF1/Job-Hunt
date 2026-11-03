@@ -1,16 +1,23 @@
+{% set counter_qs = params.query_string(include_sort=False, include_pagination=False) %}
 <div id="status-counters"
      class="counters-bar"
-     hx-get="/partials/counters{% if params.status %}?status={{ params.status | urlencode }}{% endif %}"
+     hx-get="/partials/counters{% if params.status or params.new_only %}?{% if params.status %}status={{ params.status | urlencode }}{% endif %}{% if params.status and params.new_only %}&amp;{% endif %}{% if params.new_only %}new_only=1{% endif %}{% endif %}"
      hx-trigger="jobsChanged from:body"
      hx-swap="outerHTML">
   <a href="/"
-     class="counter-chip {% if not params.status %}active{% endif %}">
+     class="counter-chip {% if not params.status and not params.new_only %}active{% endif %}">
     <span>All</span>
     <span class="count">{{ total_all }}</span>
   </a>
+  <a href="/?new_only=1"
+     class="counter-chip counter-new {% if params.new_only %}active{% endif %}">
+    <span class="new-badge">NEW</span>
+    <span>since last scan</span>
+    <span class="count">{{ new_jobs_count | default(0) }}</span>
+  </a>
   {% for st in STATUSES %}
     <a href="/?status={{ st | urlencode }}"
-       class="counter-chip status-{{ status_slug(st) }} {% if params.status == st %}active{% endif %}">
+       class="counter-chip status-{{ status_slug(st) }} {% if params.status == st and not params.new_only %}active{% endif %}">
       <span>{{ st }}</span>
       <span class="count">{{ status_counts.get(st, 0) }}</span>
     </a>

@@ -201,7 +201,8 @@ def rescore(session: Session, evaluator: Evaluator, now: datetime | None = None)
 def run_postings(session: Session, evaluator: Evaluator, postings: list[JobPosting], site: str,
                  now: datetime | None = None) -> Run:
     """Ingest + process a batch as one tracked run (row in `runs`). Per-posting errors don't abort the run."""
-    run = Run(site=site, started_at=utcnow(), errors=[])
+    ref_now = now or utcnow()
+    run = Run(site=site, started_at=ref_now, errors=[])
     session.add(run)
     session.flush()
     log_event(session, "run_started", f"run {run.id} site={site} postings={len(postings)}")
@@ -209,11 +210,11 @@ def run_postings(session: Session, evaluator: Evaluator, postings: list[JobPosti
     for posting in postings:
         try:
             with session.begin_nested():
-                job, created = ingest(session, posting, now)
+                job, created = ingest(session, posting, ref_now)
                 if not created:
                     continue
                 run.new_count += 1
-                ev = process_job(session, evaluator, job, now)
+                ev = process_job(session, evaluator, job, ref_now)
                 if ev.status == "Skipped":
                     run.skipped_count += 1
                 elif ev.status == "Shortlisted":

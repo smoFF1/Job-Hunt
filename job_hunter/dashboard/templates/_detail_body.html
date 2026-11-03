@@ -3,6 +3,9 @@
     <div class="panel-header">
       <div>
         <strong dir="auto">{{ job.title }}</strong>
+        {% if is_job_new(job, new_since_cutoff) %}
+          <span class="new-badge" title="NEW since last scan">NEW</span>
+        {% endif %}
         {% if job.company %}
           &middot; <span dir="auto">{{ job.company }}</span>
         {% endif %}
@@ -61,6 +64,7 @@
       <div class="detail-controls-grid">
         <div class="detail-controls-row">
           <form method="post" action="/jobs/{{ job.id }}/status" class="field">
+            <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
             <input type="hidden" name="context" value="detail">
             <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
             <label for="detail-status">Status</label>
@@ -68,6 +72,7 @@
                     name="status"
                     class="status-select status-{{ status_slug(job.status) }}"
                     hx-post="/jobs/{{ job.id }}/status"
+                    hx-include="closest form"
                     hx-target="#detail-body"
                     hx-swap="outerHTML"
                     hx-trigger="change">
@@ -79,6 +84,7 @@
           </form>
 
           <form method="post" action="/jobs/{{ job.id }}/cv" class="field">
+            <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
             <input type="hidden" name="context" value="detail">
             <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
             <label for="detail-cv">Selected CV</label>
@@ -86,6 +92,7 @@
                     name="cv_id"
                     class="cv-select"
                     hx-post="/jobs/{{ job.id }}/cv"
+                    hx-include="closest form"
                     hx-target="#detail-body"
                     hx-swap="outerHTML"
                     hx-trigger="change">
@@ -104,6 +111,7 @@
               hx-post="/jobs/{{ job.id }}/notes"
               hx-target="#detail-body"
               hx-swap="outerHTML">
+          <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
           <input type="hidden" name="context" value="detail">
           <input type="hidden" name="next_url" value="/jobs/{{ job.id }}">
           <label for="detail-notes">Notes</label>

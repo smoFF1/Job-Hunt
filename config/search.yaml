@@ -256,3 +256,5 @@ sites:
     delay_max_seconds: 8.0
     max_retries: 2
     include_vip: false
+    min_minutes_between_scans: 30
+    min_minutes_after_block: 240

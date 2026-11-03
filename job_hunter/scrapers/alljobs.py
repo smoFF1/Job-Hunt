@@ -334,6 +334,11 @@ class AllJobsScraper(BaseScraper):
     """Scraper for alljobs.co.il public guest search listings."""
 
     name = "alljobs"
+    origin = ALLJOBS_ORIGIN
+
+    @classmethod
+    def build_http_settings(cls, site_config: dict | None = None) -> HttpSettings:
+        return build_alljobs_http_settings(site_config)
 
     def __init__(
         self,

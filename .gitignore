@@ -1,5 +1,10 @@
 .env
 *.db
+*.db-wal
+*.db-shm
+*.scan.lock
+*.scan_state.json
+*.scan.stop
 assets/cv/
 config/profile.yaml
 config/cvs.yaml

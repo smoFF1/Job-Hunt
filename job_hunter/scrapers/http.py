@@ -65,6 +65,10 @@ class PageLimitReached(ScraperError):
     """Configured per-run page limit has been reached."""
 
 
+class ScanStoppedError(ScraperError):
+    """Scan was stopped on user request."""
+
+
 def detect_block_in_html(
     html: str,
     *,
@@ -128,6 +132,8 @@ class PoliteHttpClient:
         sleep_fn: Callable[[float], None] = time.sleep,
         rng: random.Random | None = None,
         on_event: Callable[[str, str], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        on_page_fetched: Callable[[int], None] | None = None,
     ):
         self.settings = settings
         self._owns_client = client is None
@@ -135,8 +141,14 @@ class PoliteHttpClient:
         self._sleep = sleep_fn
         self._rng = rng or random.Random()
         self._on_event = on_event
+        self._should_stop = should_stop
+        self._on_page_fetched = on_page_fetched
         self._robots: RobotsPolicy | None = None
         self.pages_fetched: int = 0
+
+    def _check_stop(self) -> None:
+        if self._should_stop is not None and self._should_stop():
+            raise ScanStoppedError("Stopped by user")
 
     def close(self) -> None:
         if self._owns_client:
@@ -154,6 +166,7 @@ class PoliteHttpClient:
 
     def ensure_robots(self) -> RobotsPolicy:
         """Fetch and cache robots.txt once at run start; raise RobotsUnavailableError on failure."""
+        self._check_stop()
         if self._robots is None:
             self._robots = fetch_robots_policy(
                 self._client,
@@ -192,6 +205,7 @@ class PoliteHttpClient:
         max_redirects: int = 5,
     ) -> str:
         """Fetch one HTML page after verifying robots.txt, page budget, polite delay, and block checks."""
+        self._check_stop()
         robots = self.ensure_robots()
 
         # Always validate URL against robots.txt BEFORE checking budget or touching network.
@@ -205,6 +219,7 @@ class PoliteHttpClient:
             raise PageLimitReached(f"Reached max_pages_per_run={self.settings.max_pages_per_run}")
 
         self._polite_delay()
+        self._check_stop()
         headers = {
             "User-Agent": self.settings.user_agent,
             "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
@@ -215,6 +230,7 @@ class PoliteHttpClient:
             current_url = url
             try:
                 for _hop in range(max_redirects + 1):
+                    self._check_stop()
                     robots.assert_allowed(current_url)
                     resp = self._client.get(current_url, headers=headers, follow_redirects=False)
 
@@ -259,6 +275,8 @@ class PoliteHttpClient:
                         raise BlockedError(block_reason)
 
                     self.pages_fetched += 1
+                    if self._on_page_fetched is not None:
+                        self._on_page_fetched(self.pages_fetched)
                     return html
 
                 reason = f"Too many redirects (>{max_redirects}) starting from {url}"

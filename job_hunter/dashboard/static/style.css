@@ -551,3 +551,225 @@ pre.job-description {
   color: #166534;
   font-weight: 600;
 }
+
+/* Phase 4: On-demand scan panel & NEW badge */
+.new-badge {
+  display: inline-block;
+  padding: 0.08rem 0.38rem;
+  margin-inline-start: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+  vertical-align: middle;
+}
+
+.counter-new {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scan-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.85rem;
+}
+
+.scan-start-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  flex: 1 1 32rem;
+}
+
+.scan-sites-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.scan-site-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  min-width: 14rem;
+}
+
+.scan-site-card.is-unavailable {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.scan-site-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.scan-site-meta {
+  font-size: 0.75rem;
+}
+
+.site-pill,
+.scan-state-pill,
+.site-run-status {
+  display: inline-block;
+  padding: 0.1rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.site-ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.site-cooldown {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.site-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.site-disabled {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.block-reason-text {
+  color: #991b1b;
+}
+
+.scan-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: flex-end;
+}
+
+.extra-query-input {
+  min-width: 17rem;
+}
+
+.scan-buttons {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.scan-state-pill.state-running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.scan-state-pill.state-completed,
+.status-run-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.scan-state-pill.state-stopped,
+.status-run-stopped {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.scan-state-pill.state-failed,
+.status-run-blocked,
+.status-run-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.scan-alert {
+  padding: 0.48rem 0.7rem;
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  margin-bottom: 0.65rem;
+}
+
+.scan-alert-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.scan-alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.scan-progress-box,
+.scan-summary-box {
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+
+.scan-progress-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+  font-size: 0.84rem;
+}
+
+.scan-new-jobs-block {
+  margin-top: 0.6rem;
+}
+
+.scan-new-jobs-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.scan-summary-footer {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.45rem;
+}

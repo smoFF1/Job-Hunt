@@ -3,13 +3,17 @@
 Protections:
 - Reject any request whose `Host` header is not `127.0.0.1` or `localhost` (DNS rebinding guard).
 - Reject state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`) whose `Origin` / `Referer` /
-  `Sec-Fetch-Site` indicates a non-localhost or cross-site caller (CSRF guard).
+  `Sec-Fetch-Site` indicates a non-localhost or cross-site caller.
+- Enforce signed `HttpOnly; SameSite=Strict` cookie + form/header CSRF token on all `POST` endpoints.
 - Sanitize scraped job URLs so only `http://` and `https://` links are ever rendered.
 - Attach strict `Content-Security-Policy` and anti-framing/sniffing headers to every response.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from urllib.parse import urlsplit
 
 from starlette.datastructures import MutableHeaders
@@ -19,6 +23,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 LOCALHOST_HOSTS = frozenset({"127.0.0.1", "localhost"})
 STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+CSRF_COOKIE_NAME = "jh_csrf"
 
 CSP_POLICY = (
     "default-src 'self'; "
@@ -31,8 +36,52 @@ CSP_POLICY = (
 )
 
 
+class CsrfError(Exception):
+    """Raised when a state-changing request is missing or fails CSRF token validation."""
+
+
 def _has_control_chars(value: str) -> bool:
     return any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+
+
+def generate_csrf_cookie(secret: bytes) -> tuple[str, str]:
+    """Return `(raw_token, signed_cookie_value)` using HMAC-SHA256."""
+    token = secrets.token_urlsafe(24)
+    sig = hmac.new(secret, token.encode("ascii"), hashlib.sha256).hexdigest()
+    return token, f"{token}.{sig}"
+
+
+def verify_csrf_cookie(cookie_value: str | None, secret: bytes) -> str | None:
+    """Verify `signed_cookie_value` against `secret`; return `raw_token` if valid, else None."""
+    if not cookie_value or "." not in cookie_value:
+        return None
+    token, sig = cookie_value.split(".", 1)
+    if len(token) < 16 or _has_control_chars(token) or _has_control_chars(sig):
+        return None
+    try:
+        expected = hmac.new(secret, token.encode("ascii"), hashlib.sha256).hexdigest()
+    except UnicodeEncodeError:
+        return None
+    if not hmac.compare_digest(sig, expected):
+        return None
+    return token
+
+
+async def verify_csrf(request: Request) -> None:
+    """FastAPI dependency enforcing signed Double-Submit CSRF token on POST routes."""
+    secret: bytes = request.app.state.csrf_secret
+    cookie_token = verify_csrf_cookie(request.cookies.get(CSRF_COOKIE_NAME), secret)
+    if not cookie_token:
+        raise CsrfError("Forbidden: Missing or invalid CSRF cookie.")
+
+    submitted = request.headers.get("X-CSRF-Token")
+    if submitted is None:
+        form = await request.form()
+        raw_field = form.get("csrf_token")
+        submitted = raw_field if isinstance(raw_field, str) else None
+
+    if not submitted or not secrets.compare_digest(submitted.strip(), cookie_token):
+        raise CsrfError("Forbidden: Invalid or missing CSRF token.")
 
 
 def is_localhost_host_header(host: str | None) -> bool:
@@ -105,10 +154,11 @@ def safe_local_redirect(target: str | None, fallback: str = "/") -> str:
 
 
 class LocalhostSecurityMiddleware:
-    """Pure ASGI middleware enforcing localhost Host/Origin rules and security headers."""
+    """Pure ASGI middleware enforcing localhost Host/Origin rules, CSRF cookies, and security headers."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, csrf_secret: bytes | None = None) -> None:
         self.app = app
+        self.csrf_secret = csrf_secret or secrets.token_bytes(32)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -122,7 +172,8 @@ class LocalhostSecurityMiddleware:
             await resp(scope, receive, send)
             return
 
-        if request.method.upper() in STATE_CHANGING_METHODS:
+        method = request.method.upper()
+        if method in STATE_CHANGING_METHODS:
             origin = request.headers.get("origin")
             if origin is not None:
                 if not is_localhost_origin(origin):
@@ -142,6 +193,13 @@ class LocalhostSecurityMiddleware:
                 await resp(scope, receive, send)
                 return
 
+        cookie_token = verify_csrf_cookie(request.cookies.get(CSRF_COOKIE_NAME), self.csrf_secret)
+        set_csrf_cookie_val: str | None = None
+        if cookie_token is None and method not in STATE_CHANGING_METHODS:
+            cookie_token, set_csrf_cookie_val = generate_csrf_cookie(self.csrf_secret)
+
+        scope.setdefault("state", {})["csrf_token"] = cookie_token or ""
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
@@ -149,6 +207,11 @@ class LocalhostSecurityMiddleware:
                 headers.setdefault("X-Content-Type-Options", "nosniff")
                 headers.setdefault("X-Frame-Options", "DENY")
                 headers.setdefault("Referrer-Policy", "no-referrer")
+                if set_csrf_cookie_val is not None:
+                    headers.append(
+                        "set-cookie",
+                        f"{CSRF_COOKIE_NAME}={set_csrf_cookie_val}; Path=/; HttpOnly; SameSite=Strict",
+                    )
             await send(message)
 
         await self.app(scope, receive, send_with_headers)

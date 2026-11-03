@@ -3,6 +3,9 @@
   <td class="cell-company" dir="auto">{{ job.company or "—" }}</td>
   <td class="cell-title" dir="auto">
     <a href="/jobs/{{ job.id }}" dir="auto">{{ job.title }}</a>
+    {% if is_job_new(job, new_since_cutoff) %}
+      <span class="new-badge" title="NEW since last scan">NEW</span>
+    {% endif %}
     {% if job.location %}
       <div class="muted" dir="auto">{{ job.location }}</div>
     {% endif %}
@@ -17,12 +20,14 @@
   </td>
   <td>
     <form method="post" action="/jobs/{{ job.id }}/status">
+      <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
       <input type="hidden" name="context" value="row">
       <input type="hidden" name="next_url" value="{{ current_path }}">
       <select name="status"
               class="status-select status-{{ status_slug(job.status) }}"
               aria-label="Status for job {{ job.id }}"
               hx-post="/jobs/{{ job.id }}/status"
+              hx-include="closest form"
               hx-target="#job-row-{{ job.id }}"
               hx-swap="outerHTML"
               hx-trigger="change">
@@ -35,12 +40,14 @@
   </td>
   <td>
     <form method="post" action="/jobs/{{ job.id }}/cv">
+      <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
       <input type="hidden" name="context" value="row">
       <input type="hidden" name="next_url" value="{{ current_path }}">
       <select name="cv_id"
               class="cv-select"
               aria-label="CV for job {{ job.id }}"
               hx-post="/jobs/{{ job.id }}/cv"
+              hx-include="closest form"
               hx-target="#job-row-{{ job.id }}"
               hx-swap="outerHTML"
               hx-trigger="change">
@@ -60,6 +67,7 @@
           hx-post="/jobs/{{ job.id }}/notes"
           hx-target="#job-row-{{ job.id }}"
           hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
       <input type="hidden" name="context" value="row">
       <input type="hidden" name="next_url" value="{{ current_path }}">
       <input type="text"
